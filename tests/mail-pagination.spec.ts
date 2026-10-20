@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 
 test('mail scroll loads older messages, retries failures and contains long mailbox names', async ({ page, context, baseURL }) => {
-    test.skip(!baseURL?.includes('127.0.0.1'), 'Uses loopback-only render proof auth')
+    test.skip(!/localhost|127\.0\.0\.1/.test(baseURL || ''), 'Uses loopback-only render proof auth')
     await context.setExtraHTTPHeaders({ 'x-hanasand-render-proof-auth': 'local-dashboard-render-proof' })
     await context.addCookies([
         { name: 'id', value: 'dashboard-render-proof-user', url: baseURL! },
@@ -9,7 +9,7 @@ test('mail scroll loads older messages, retries failures and contains long mailb
     ])
     let failNext = true
     let archived = false
-    await page.route('**/api/backend/mail/overview?*', async route => {
+    await page.route('**/api/backend/mail/overview**', async route => {
         const params = new URL(route.request().url()).searchParams
         const after = params.get('after')
         const support = params.get('mailboxUser') === 'shared:support'
@@ -22,7 +22,7 @@ test('mail scroll loads older messages, retries failures and contains long mailb
             selectedMessage: params.get('messageId') ? { ...messages.find(message => message.id === params.get('messageId')), replyTo: [], bcc: [], attachments: [], textBody: 'Original message', htmlBody: '<p>Original message</p>' } : null,
         } })
     })
-    await page.goto('/mail')
+    await page.goto('/')
     await expect(page.getByTestId('mail-message-49')).toBeAttached()
     await expect(page.getByRole('button', { name: 'Open Security', exact: true })).toBeVisible()
     await page.getByRole('button', { name: 'Load older messages' }).scrollIntoViewIfNeeded()

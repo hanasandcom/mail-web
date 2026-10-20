@@ -25,10 +25,17 @@ bun run typecheck
 bun run build
 ```
 
-Playwright tests run with `bun run test`. They need a web app at
-`PLAYWRIGHT_BASE_URL` (default `http://127.0.0.1:3010`) and a test API at
-`PLAYWRIGHT_API_BASE` (default `http://127.0.0.1:8080/api`). The end-to-end suite
-creates accounts and sends mail, so use an isolated test environment.
+Playwright tests run against this app's `/` route. In one terminal, start the mail
+web app on port 3010 with `HANASAND_API_BASE` pointed at an isolated test API:
+
+```sh
+PORT=3010 HANASAND_API_BASE=http://127.0.0.1:8080/api bun run dev
+```
+
+In another terminal, run `bun run test`. `PLAYWRIGHT_BASE_URL` defaults to
+`http://127.0.0.1:3010`, and `PLAYWRIGHT_API_BASE` defaults to
+`http://127.0.0.1:8080/api`. The end-to-end suite creates accounts and sends mail, so
+keep both the app proxy and test API on isolated test services.
 
 ## Sign in
 

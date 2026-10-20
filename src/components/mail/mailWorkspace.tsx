@@ -176,8 +176,8 @@ export default function MailWorkspace({ mailboxUser }: Props) {
         } catch (cause) {
             if (version !== requestVersion.current) return
             const rawMessage = cause instanceof Error ? cause.message : ''
-            const message = /failed to fetch|networkerror|load failed/i.test(rawMessage)
-                ? 'Mail is reconnecting. The rest of the console is still ready.'
+            const message = /failed to fetch|networkerror|load failed|socket connection was closed unexpectedly|socket hang up|econnreset/i.test(rawMessage)
+                ? 'The mail service closed the connection before the mailbox loaded. Mail will retry automatically.'
                 : rawMessage || 'Unable to load the mailbox.'
             if (silent) {
                 setUnreachableSince(current => current ?? Date.now())
@@ -242,11 +242,8 @@ export default function MailWorkspace({ mailboxUser }: Props) {
     }, [loadMore, overview?.nextCursor, loadingMore, pageError])
 
     useEffect(() => {
-        const timer = window.setTimeout(() => {
-            void load({ mailboxUser, mailboxId: null, messageId: null })
-        }, 0)
-
-        return () => { window.clearTimeout(timer); requestVersion.current++; requestPending.current = false }
+        void load({ mailboxUser, mailboxId: null, messageId: null })
+        return () => { requestVersion.current++; requestPending.current = false }
     }, [load, mailboxUser])
 
     useEffect(() => {
@@ -341,11 +338,16 @@ export default function MailWorkspace({ mailboxUser }: Props) {
                 <div className='flex min-w-0 flex-1 flex-wrap items-center gap-2'>
                     <div className='mr-auto flex h-8 min-w-0 flex-col justify-center'>
                         <p className='text-xs leading-4 text-ui-muted'>Mailbox</p>
-                        <p className='truncate text-xs leading-4 text-ui-muted'>{overview?.mailboxAddress || 'Communication'}</p>
+                        {overview ? <p className='truncate text-xs leading-4 text-ui-muted'>{overview.mailboxAddress || 'Communication'}</p> : <span aria-hidden='true' className='mt-1 block h-3 w-28 animate-pulse rounded bg-ui-raised' />}
                     </div>
                     <div className='flex flex-wrap items-center gap-2 text-xs font-semibold text-ui-muted' data-mail-counts>
-                        <span className='inline-flex h-8 items-center rounded-md border border-ui-border bg-ui-raised px-2'>{unreadCount} unread</span>
-                        <span className='inline-flex h-8 items-center rounded-md border border-ui-border bg-ui-raised px-2'>{filteredMessages.length} visible</span>
+                        {overview ? <>
+                            <span className='inline-flex h-8 items-center rounded-md border border-ui-border bg-ui-raised px-2'>{unreadCount} unread</span>
+                            <span className='inline-flex h-8 items-center rounded-md border border-ui-border bg-ui-raised px-2'>{filteredMessages.length} visible</span>
+                        </> : <>
+                            <span aria-hidden='true' className='h-8 w-20 animate-pulse rounded-md bg-ui-raised' />
+                            <span aria-hidden='true' className='h-8 w-20 animate-pulse rounded-md bg-ui-raised' />
+                        </>}
                     </div>
                     <MailSyncStatus lastSuccessAt={lastSuccessAt} unreachableSince={unreachableSince} now={now} />
 
@@ -437,6 +439,9 @@ export default function MailWorkspace({ mailboxUser }: Props) {
                             </div>
                         </div>
 
+                        {!overview && loading ? <div role='status' aria-label='Loading mailboxes' className='mb-3 grid gap-2 border-b border-ui-border pb-3'>
+                            {Array.from({ length: 5 }, (_, index) => <div key={index} aria-hidden='true' className='h-9 animate-pulse rounded-lg bg-ui-raised' />)}
+                        </div> : null}
                         <nav aria-label='Mailboxes' className='mb-3 grid min-w-0 grid-cols-1 gap-1 border-b border-ui-border pb-3'>
                             {overview && overview.accessibleAccounts
                                 .filter(account => !['admin', 'administrator'].includes(account.id.toLowerCase()) && account.name.toLowerCase() !== 'administrator')
@@ -534,6 +539,9 @@ export default function MailWorkspace({ mailboxUser }: Props) {
                         </button>
                     </div>}
                     <div className='grid min-w-0 grid-cols-1 gap-1.5'>
+                        {!overview && loading ? <div role='status' aria-label='Loading messages' className='grid gap-1.5'>
+                            {Array.from({ length: 8 }, (_, index) => <div key={index} aria-hidden='true' className='h-[72px] animate-pulse rounded-lg border border-ui-border bg-ui-raised' />)}
+                        </div> : null}
                         {filteredMessages.map(message => (
                             <MessageRow
                                 key={`${overview?.mailboxUser}:${message.id}`}

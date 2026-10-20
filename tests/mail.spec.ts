@@ -24,11 +24,11 @@ test.describe('mail workspace', () => {
             await authenticateContext(senderContext, senderAuth, baseURL || 'http://127.0.0.1:3000')
             await authenticateContext(recipientContext, recipientAuth, baseURL || 'http://127.0.0.1:3000')
 
-            await senderPage.goto('/mail')
-            await recipientPage.goto('/mail')
+            await senderPage.goto('/')
+            await recipientPage.goto('/')
 
-            await expect(senderPage).toHaveURL(/\/mail/)
-            await expect(recipientPage).toHaveURL(/\/mail/)
+            await expect(senderPage).toHaveURL(/\/$/)
+            await expect(recipientPage).toHaveURL(/\/$/)
             await expect(composeButton(senderPage)).toBeVisible()
             await expect(composeButton(recipientPage)).toBeVisible()
 
@@ -48,7 +48,7 @@ test.describe('mail workspace', () => {
             const senderReloadedContext = await browser.newContext({ baseURL })
             const senderReloadedPage = await senderReloadedContext.newPage()
             await authenticateContext(senderReloadedContext, senderAuth, baseURL || 'http://127.0.0.1:3000')
-            await senderReloadedPage.goto('/mail')
+            await senderReloadedPage.goto('/')
             await composeButton(senderReloadedPage).click()
             await toInput(senderReloadedPage).fill(recipientId.slice(0, 4))
             await expect(senderReloadedPage.getByTestId(`mail-recipient-suggestion-${recipientId}-hanasand-com`)).toBeVisible({ timeout: 30_000 })

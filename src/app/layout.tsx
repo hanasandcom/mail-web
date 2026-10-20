@@ -10,5 +10,6 @@ export const metadata = {
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
     const theme = (await cookies()).get('theme')?.value === 'light' ? 'light' : 'dark'
-    return <html lang='en' className={theme}><body>{children}</body></html>
+    const canvas = theme === 'light' ? '#f5f5f5' : '#070707'
+    return <html lang='en' className={theme} style={{ backgroundColor: canvas, colorScheme: theme }}><body style={{ backgroundColor: canvas }}>{children}</body></html>
 }

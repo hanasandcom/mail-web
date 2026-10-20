@@ -11,7 +11,7 @@ test('select mail without opening it, archive a group, and retain failures for r
     const archived = new Set<string>()
     let fail = true
     const requests: { id: string, mailboxUser: string, action: string }[] = []
-    await page.route('**/api/backend/mail/overview?*', route => {
+    await page.route('**/api/backend/mail/overview**', route => {
         const mailbox = new URL(route.request().url()).searchParams.get('mailboxId') || 'inbox'
         return route.fulfill({ json: {
             actor: { id: 'dashboard-render-proof-user', canSend: true }, mailboxUser: 'dashboard-render-proof-user', mailboxAddress: 'test@example.com', accessibleAccounts: [],
@@ -26,7 +26,7 @@ test('select mail without opening it, archive a group, and retain failures for r
         archived.add(id)
         return route.fulfill({ json: { ok: true } })
     })
-    await page.goto('/mail')
+    await page.goto('/')
     await expect(page.getByTestId('mail-message-One')).toBeVisible()
     await expect(page.getByRole('checkbox')).toHaveCount(0)
     await page.locator('[data-mail-filter-strip]').getByRole('button', { name: 'Select', exact: true }).click()
