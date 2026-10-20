@@ -1,18 +1,46 @@
 # Hanasand Mail
 
-Standalone webmail client for Hanasand. Mailbox data and actions stay in the Hanasand API; the client forwards the signed-in Hanasand session to that API.
+Standalone webmail for `mail.hanasand.com`. This repository contains the browser UI and
+its same-origin API proxy. The Hanasand API owns mailbox data and actions; this app
+forwards the signed-in session and does not store mailboxes.
 
-## Development
+## Develop
+
+Use Bun. The app runs on port 3000 by default:
 
 ```sh
 bun install
 bun run dev
 ```
 
-The app uses the shared Hanasand `id`, `access_token`, and `theme` cookies. To sign in, it hands unauthenticated visitors to `https://hanasand.com/dashboard/mail`, which returns here after Hanasand login.
+Set `HANASAND_API_BASE` in `.env.local` to the API you intend to use. The app defaults
+to `https://api.hanasand.com/api` when the variable is unset, so local mail actions can
+reach the live API. The shared `id`, `access_token`, and `theme` cookies are scoped to
+`.hanasand.com`; local development needs a suitable local authentication setup.
+
+## Check
+
+```sh
+bun run typecheck
+bun run build
+```
+
+Playwright tests run with `bun run test`. They need a web app at
+`PLAYWRIGHT_BASE_URL` (default `http://127.0.0.1:3010`) and a test API at
+`PLAYWRIGHT_API_BASE` (default `http://127.0.0.1:8080/api`). The end-to-end suite
+creates accounts and sends mail, so use an isolated test environment.
+
+## Sign in
+
+Production sign-in starts at `https://hanasand.com/dashboard/mail` and returns to the
+mail site after login. Local development does not receive the production domain's
+cookies automatically.
 
 ## Deploy
 
-Push `main` to the mail repository, fast-forward the server checkout, then run `scripts/deploy.sh` there. This deploys only the web app and switches the mail hostname's OpenResty web route after the new app passes its health check.
+Push `main` to this repository, fast-forward the checkout on the mail host, then run
+`scripts/deploy.sh` from that clean checkout. The script builds and health-checks a
+candidate before switching the `mail.hanasand.com` OpenResty route to it.
 
-The Stalwart server and SMTP relay have their own [Stalwart repository](https://github.com/hanasandcom/stalwart) and Compose deployment.
+The Stalwart server and SMTP relay are deployed separately from the
+[mail-server repository](https://github.com/hanasandcom/mail-server).
