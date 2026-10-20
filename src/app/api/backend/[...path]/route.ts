@@ -1,5 +1,6 @@
 import { cookies } from 'next/headers'
 import { NextRequest, NextResponse } from 'next/server'
+import { resolveMailProxyAuth } from '@/utils/mail/proxyAuth'
 
 type Context = { params: Promise<{ path?: string[] }> }
 const API_BASE = (process.env.HANASAND_API_BASE || 'https://api.hanasand.com/api').replace(/\/+$/, '')
@@ -31,8 +32,14 @@ async function handler(req: NextRequest, context: Context) {
     }
 
     const jar = await cookies()
-    const token = jar.get('access_token')?.value || ''
-    const id = jar.get('id')?.value || ''
+    // The mail client sends its current credentials explicitly. Prefer them
+    // over cookies because browsers can retain a stale duplicate cookie while
+    // the page has already received a refreshed token.
+    const { token, id } = resolveMailProxyAuth(
+        req.headers,
+        jar.get('access_token')?.value || '',
+        jar.get('id')?.value || '',
+    )
     if (!token || !id) {
         const headers = new Headers(cors)
         headers.set('cache-control', 'no-store')
