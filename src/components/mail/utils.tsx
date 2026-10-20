@@ -3,7 +3,6 @@
 import type { ReactNode } from 'react'
 import {
     Archive,
-    Forward,
     Inbox,
     Mail,
     Trash2,
@@ -111,8 +110,10 @@ export async function runAction(
         await load(['archive', 'trash', 'junk', 'ham', 'restore'].includes(action)
             ? { silent: true, messageId: null }
             : { silent: true })
+        return true
     } catch (cause) {
         setError(cause instanceof Error ? cause.message : 'Unable to update message.')
+        return false
     }
 }
 
@@ -209,7 +210,7 @@ export async function fileToDraftAttachment(file: File): Promise<DraftAttachment
 
 export function AttachmentPreview({ attachment, mailboxUser }: { attachment: MailAttachment, mailboxUser: string }) {
     const url = mailBlobUrl(mailboxUser, attachment.blobId, attachment.name)
-    if (attachment.type.startsWith('image/')) {
+    if (inlineAttachmentTypes.has(attachment.type.split(';', 1)[0].trim().toLowerCase())) {
         return (
             <a href={url} target='_blank' rel='noopener noreferrer' className='rounded-lg border border-ui-border bg-ui-raised p-2.5 transition hover:bg-ui-panel'>
                 <Image src={url} alt={attachment.name} className='h-36 w-full rounded-lg object-cover' />
@@ -218,25 +219,21 @@ export function AttachmentPreview({ attachment, mailboxUser }: { attachment: Mai
         )
     }
 
-    if (attachment.type === 'application/pdf') {
-        return (
-            <div className='rounded-lg border border-ui-border bg-ui-raised p-2.5'>
-                <iframe title={attachment.name} src={url} className='h-48 w-full rounded-lg bg-ui-canvas' />
-                <a href={url} target='_blank' rel='noopener noreferrer' className='mt-2 inline-flex items-center gap-1.5 text-[11px] font-medium text-ui-text'>
-                    {attachment.name}
-                    <Forward className='h-3.5 w-3.5' />
-                </a>
-            </div>
-        )
-    }
-
     return (
-        <a href={url} target='_blank' rel='noopener noreferrer' className='rounded-lg border border-ui-border bg-ui-raised p-2.5 text-[11px] text-ui-muted transition hover:bg-ui-panel'>
+        <a href={url} download={attachment.name} className='rounded-lg border border-ui-border bg-ui-raised p-2.5 text-[11px] text-ui-muted transition hover:bg-ui-panel'>
             <p className='truncate font-medium text-ui-text'>{attachment.name}</p>
             <p className='mt-1 text-[10px] text-ui-muted'>{attachment.type} • {prettyBytes(attachment.size)}</p>
         </a>
     )
 }
+
+const inlineAttachmentTypes = new Set([
+    'image/avif',
+    'image/gif',
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+])
 
 export function withInlineAttachments(message: MailMessage, mailboxUser: string) {
     let html = message.htmlBody

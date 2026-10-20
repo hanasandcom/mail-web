@@ -27,6 +27,7 @@ import {
     deleteFilter,
     fetchMailOverview,
     messageAction,
+    searchMail,
     sendMail,
 } from '@/utils/mail/client'
 import type { MailMessageSummary, MailOverview } from '@/utils/mail/types'
@@ -57,6 +58,13 @@ type Props = {
 }
 
 type MailListFilter = 'all' | 'unread' | 'starred' | 'attachments'
+type MailSearchPage = {
+    query: string
+    mailboxUser: string
+    mailboxId: string
+    messages: MailMessageSummary[]
+    nextCursor: string | null
+}
 
 const POLL_INTERVAL_MS = 10_000
 const STALE_AFTER_MS = 60_000
@@ -91,12 +99,17 @@ export default function MailWorkspace({ mailboxUser }: Props) {
     const [adminDrawerOpen, setAdminDrawerOpen] = useState(false)
     const [query, setQuery] = useState('')
     const [searchOpen, setSearchOpen] = useState(false)
+    const [mailboxSearch, setMailboxSearch] = useState<MailSearchPage | null>(null)
+    const [searchPending, setSearchPending] = useState(false)
+    const [searchError, setSearchError] = useState('')
+    const [searchRefresh, setSearchRefresh] = useState(0)
     const searchInput = useRef<HTMLInputElement>(null)
     const [lastSuccessAt, setLastSuccessAt] = useState<number | null>(null)
     const [unreachableSince, setUnreachableSince] = useState<number | null>(null)
     const [now, setNow] = useState(() => Date.now())
     const selection = useRef<{ user: string | null, mailbox: string | null, message: string | null }>({ user: mailboxUser || null, mailbox: null, message: null })
     const requestVersion = useRef(0)
+    const searchVersion = useRef(0)
     const requestPending = useRef(false)
     const paginationPending = useRef(false)
     const nextPageTrigger = useRef<HTMLDivElement>(null)
@@ -107,6 +120,15 @@ export default function MailWorkspace({ mailboxUser }: Props) {
     const [archiving, setArchiving] = useState(false)
     const archivingRef = useRef(false)
     const [mailFilter, setMailFilter] = useState<MailListFilter>('all')
+    const normalizedQuery = query.trim()
+    const currentMailboxSearch = mailboxSearch?.query === normalizedQuery
+        && mailboxSearch.mailboxUser === overview?.mailboxUser
+        && mailboxSearch.mailboxId === overview?.selectedMailboxId
+        ? mailboxSearch
+        : null
+    const hasMoreMessages = normalizedQuery
+        ? Boolean(currentMailboxSearch?.nextCursor)
+        : Boolean(overview?.nextCursor)
 
     useEffect(() => {
         if (searchOpen) searchInput.current?.focus()
@@ -194,15 +216,32 @@ export default function MailWorkspace({ mailboxUser }: Props) {
     }, [mailboxUser])
 
     const loadMore = useCallback(async () => {
-        if (!overview?.nextCursor || paginationPending.current || requestPending.current) return
+        if (!overview || paginationPending.current || requestPending.current) return
+        const term = normalizedQuery
+        const cursor = term
+            ? currentMailboxSearch?.nextCursor
+            : overview.nextCursor
+        if (!cursor) return
         if (overview.mailboxUser !== selection.current.user || overview.selectedMailboxId !== selection.current.mailbox) return
         const version = requestVersion.current
+        const searchVersionAtStart = searchVersion.current
         paginationPending.current = true
         setLoadingMore(true)
         setPageError('')
         try {
-            const page = await fetchMailOverview({ mailboxUser: overview.mailboxUser, mailboxId: overview.selectedMailboxId, after: overview.nextCursor })
+            const page = term
+                ? await searchMail({ mailboxUser: overview.mailboxUser, mailboxId: overview.selectedMailboxId!, query: term, after: cursor })
+                : await fetchMailOverview({ mailboxUser: overview.mailboxUser, mailboxId: overview.selectedMailboxId, after: cursor })
             if (version !== requestVersion.current) return
+            if (term) {
+                if (searchVersionAtStart !== searchVersion.current) return
+                setMailboxSearch(current => {
+                    if (!current || current.query !== term || current.mailboxUser !== overview.mailboxUser || current.mailboxId !== overview.selectedMailboxId) return current
+                    const ids = new Set(current.messages.map(message => message.id))
+                    return { ...current, messages: [...current.messages, ...page.messages.filter(message => !ids.has(message.id))], nextCursor: page.nextCursor || null }
+                })
+                return
+            }
             setOverview(current => {
                 if (!current || version !== requestVersion.current || current.mailboxUser !== overview.mailboxUser || current.selectedMailboxId !== overview.selectedMailboxId) return current
                 const ids = new Set(current.messages.map(message => message.id))
@@ -214,7 +253,7 @@ export default function MailWorkspace({ mailboxUser }: Props) {
             paginationPending.current = false
             setLoadingMore(false)
         }
-    }, [overview])
+    }, [currentMailboxSearch, normalizedQuery, overview])
 
     async function quickAction(message: MailMessageSummary, action: MailQuickAction) {
         if (!overview || loading || archivingRef.current) return
@@ -227,19 +266,24 @@ export default function MailWorkspace({ mailboxUser }: Props) {
                 setComposer(composeFromReply(action, detail.selectedMessage, overview.mailboxAddress))
             } catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to open message.') }
         } else {
-            await runAction(message.id, overview, setError, load, action)
+            await performAction(message.id, action)
         }
+    }
+
+    async function performAction(messageId: string, action: 'archive' | 'trash' | 'read' | 'unread' | 'flag' | 'unflag' | 'junk' | 'ham' | 'restore') {
+        if (!overview) return
+        if (await runAction(messageId, overview, setError, load, action)) setSearchRefresh(value => value + 1)
     }
 
     useEffect(() => {
         const target = nextPageTrigger.current
-        if (!target || !overview?.nextCursor || loadingMore || pageError) return
+        if (!target || !hasMoreMessages || loadingMore || pageError) return
         const observer = new IntersectionObserver(entries => {
             if (entries.some(entry => entry.isIntersecting)) void loadMore()
         }, { rootMargin: '300px' })
         observer.observe(target)
         return () => observer.disconnect()
-    }, [loadMore, overview?.nextCursor, loadingMore, pageError])
+    }, [loadMore, hasMoreMessages, loadingMore, pageError])
 
     useEffect(() => {
         void load({ mailboxUser, mailboxId: null, messageId: null })
@@ -266,25 +310,50 @@ export default function MailWorkspace({ mailboxUser }: Props) {
         }
     }, [load])
 
+    useEffect(() => {
+        const term = query.trim()
+        const user = overview?.mailboxUser
+        const mailboxId = overview?.selectedMailboxId
+        const version = ++searchVersion.current
+        setMailboxSearch(null)
+        setSearchError('')
+
+        if (!term || !user || !mailboxId) {
+            setSearchPending(false)
+            return
+        }
+
+        setSearchPending(true)
+        const timer = window.setTimeout(() => {
+            void searchMail({ mailboxUser: user, mailboxId, query: term }).then(page => {
+                if (version !== searchVersion.current) return
+                setMailboxSearch({ query: term, mailboxUser: user, mailboxId, ...page })
+            }).catch(cause => {
+                if (version !== searchVersion.current) return
+                setSearchError(cause instanceof Error ? cause.message : 'Unable to search this mailbox.')
+            }).finally(() => {
+                if (version === searchVersion.current) setSearchPending(false)
+            })
+        }, 250)
+
+        return () => {
+            window.clearTimeout(timer)
+            if (version === searchVersion.current) searchVersion.current++
+        }
+    }, [query, overview?.mailboxUser, overview?.selectedMailboxId, searchRefresh])
+
     const filteredMessages = useMemo(() => {
-        const needle = query.trim().toLowerCase()
-        const messages = overview?.messages || []
+        const messages = normalizedQuery
+            ? currentMailboxSearch?.messages || []
+            : overview?.messages || []
 
         return messages.filter(message => {
             if (!messageMatchesMailFilter(message, mailFilter)) {
                 return false
             }
-            if (!needle) {
-                return true
-            }
-            const haystack = [
-                message.subject,
-                message.preview,
-                message.from.map(from => from.name || from.email).join(' '),
-            ].join(' ').toLowerCase()
-            return haystack.includes(needle)
+            return true
         })
-    }, [overview?.messages, query, mailFilter])
+    }, [currentMailboxSearch, overview?.messages, normalizedQuery, mailFilter])
 
     const checkedVisible = filteredMessages.filter(message => checkedMessages.has(message.id))
 
@@ -312,6 +381,7 @@ export default function MailWorkspace({ mailboxUser }: Props) {
                     ? { ...current, messages: current.messages.filter(message => !succeeded.has(message.id)) } : current)
                 archivingRef.current = false
                 await load({ silent: true })
+                if (succeeded.size) setSearchRefresh(value => value + 1)
                 if (succeeded.size !== ids.length) setError(`Could not archive ${ids.length - succeeded.size} selected ${ids.length - succeeded.size === 1 ? 'message' : 'messages'}. Try again.`)
             }
         } finally {
@@ -400,7 +470,7 @@ export default function MailWorkspace({ mailboxUser }: Props) {
             {showUnreachableWarning && backgroundIssue && (
                 <ErrorNotice compact message={lastSuccessAt
                     ? `Background sync paused. Last successful update was ${formatRelativeTime(lastSuccessAt, now)} ago.`
-                    : 'Background sync paused. No successful update yet.'} />
+                    : 'Server unavailable.'} />
             )}
 
             <div className={`grid min-w-0 grid-cols-1 gap-4 @3xl:min-h-0 @3xl:flex-1 ${sidebarCompact ? '@3xl:grid-cols-[80px_minmax(0,1fr)]' : '@3xl:grid-cols-[220px_minmax(0,1fr)]'}`}>
@@ -542,6 +612,8 @@ export default function MailWorkspace({ mailboxUser }: Props) {
                         {!overview && loading ? <div role='status' aria-label='Loading messages' className='grid gap-1.5'>
                             {Array.from({ length: 8 }, (_, index) => <div key={index} aria-hidden='true' className='h-[72px] animate-pulse rounded-lg border border-ui-border bg-ui-raised' />)}
                         </div> : null}
+                        {searchPending && <p role='status' className='px-2 py-3 text-xs text-ui-muted'>Searching mailbox…</p>}
+                        {searchError && <p role='alert' className='px-2 py-3 text-xs text-ui-text'>{searchError}</p>}
                         {filteredMessages.map(message => (
                             <MessageRow
                                 key={`${overview?.mailboxUser}:${message.id}`}
@@ -567,10 +639,10 @@ export default function MailWorkspace({ mailboxUser }: Props) {
                             />
                         ))}
                         <div ref={nextPageTrigger}>
-                            {overview?.nextCursor && <button type='button' className={toolbarButton} disabled={loadingMore} onClick={() => void loadMore()}>{loadingMore ? 'Loading older messages…' : 'Load older messages'}</button>}
+                            {hasMoreMessages && <button type='button' className={toolbarButton} disabled={loadingMore} onClick={() => void loadMore()}>{loadingMore ? 'Loading older messages…' : 'Load older messages'}</button>}
                             {pageError && <p role='alert' className='mt-2 text-xs text-ui-text'>{pageError}</p>}
                         </div>
-                        {!filteredMessages.length && !loading && (
+                        {!filteredMessages.length && !loading && !searchPending && !searchError && (
                             <div className='rounded-lg border border-dashed border-ui-border px-3 py-4 text-xs text-ui-muted'>
                                 {query || mailFilter !== 'all' ? 'No messages match the current view.' : 'The inbox is empty.'}
                             </div>
@@ -599,14 +671,14 @@ export default function MailWorkspace({ mailboxUser }: Props) {
                                     <ActionIconButton label='Reply' disabled={loading || overview?.actor.canSend === false} icon={<Reply className='h-3.5 w-3.5' />} onClick={() => setComposer(composeFromReply('reply', selectedMessage))} />
                                     <ActionIconButton label='Reply all' disabled={loading || overview?.actor.canSend === false} icon={<CornerUpLeft className='h-3.5 w-3.5' />} onClick={() => setComposer(composeFromReply('replyAll', selectedMessage, overview.mailboxAddress))} />
                                     <ActionIconButton label='Forward' disabled={loading || overview?.actor.canSend === false} icon={<Forward className='h-3.5 w-3.5' />} onClick={() => setComposer(composeFromReply('forward', selectedMessage))} />
-                                    <ActionIconButton label={selectedMessage.isFlagged ? 'Unstar' : 'Star'} icon={<Star className='h-3.5 w-3.5' />} onClick={() => void runAction(selectedMessage.id, overview, setError, load, selectedMessage.isFlagged ? 'unflag' : 'flag')} />
-                                    <ActionIconButton label='Archive' icon={<Archive className='h-3.5 w-3.5' />} onClick={() => void runAction(selectedMessage.id, overview, setError, load, 'archive')} />
+                                    <ActionIconButton label={selectedMessage.isFlagged ? 'Unstar' : 'Star'} icon={<Star className='h-3.5 w-3.5' />} onClick={() => void performAction(selectedMessage.id, selectedMessage.isFlagged ? 'unflag' : 'flag')} />
+                                    <ActionIconButton label='Archive' icon={<Archive className='h-3.5 w-3.5' />} onClick={() => void performAction(selectedMessage.id, 'archive')} />
                                     <ActionIconButton
                                         label={selectedMessage.isJunk ? 'Not spam' : 'Spam'}
                                         icon={selectedMessage.isJunk ? <Inbox className='h-3.5 w-3.5' /> : <ShieldAlert className='h-3.5 w-3.5' />}
-                                        onClick={() => void runAction(selectedMessage.id, overview, setError, load, selectedMessage.isJunk ? 'ham' : 'junk')}
+                                        onClick={() => void performAction(selectedMessage.id, selectedMessage.isJunk ? 'ham' : 'junk')}
                                     />
-                                    <ActionIconButton label='Trash' icon={<Trash2 className='h-3.5 w-3.5' />} onClick={() => void runAction(selectedMessage.id, overview, setError, load, 'trash')} />
+                                    <ActionIconButton label='Trash' icon={<Trash2 className='h-3.5 w-3.5' />} onClick={() => void performAction(selectedMessage.id, 'trash')} />
                                 </div>
                             </div>
 

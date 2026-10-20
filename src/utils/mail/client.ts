@@ -56,6 +56,30 @@ export async function fetchMailOverview(params: { mailboxUser?: string, mailboxI
     return normalizeMailOverview(payload as Partial<MailOverview>)
 }
 
+export async function searchMail(params: { mailboxUser: string, mailboxId: string, query: string, after?: string }) {
+    const headers = authHeaders()
+    if (!headers) {
+        throw new Error('Unauthorized.')
+    }
+
+    const search = new URLSearchParams({ mailboxUser: params.mailboxUser, mailboxId: params.mailboxId, query: params.query })
+    if (params.after) search.set('after', params.after)
+
+    const response = await fetchWithTimeout(`/api/backend/mail/search?${search.toString()}`, {
+        headers,
+        cache: 'no-store',
+    }, 15_000)
+    const payload = await response.json().catch(() => ({})) as { error?: string, messages?: MailOverview['messages'], nextCursor?: string | null }
+    if (!response.ok) {
+        throw new Error(payload.error || 'Unable to search this mailbox.')
+    }
+
+    return {
+        messages: Array.isArray(payload.messages) ? payload.messages : [],
+        nextCursor: payload.nextCursor || null,
+    }
+}
+
 export async function fetchHasUnreadMail() {
     const headers = authHeaders()
     if (!headers) {
