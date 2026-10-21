@@ -7,7 +7,7 @@ config="${HANASAND_MAIL_NGINX_CONFIG:-/home/hanasand/openresty/nginx/conf.d/defa
 container="hanasand_mail_ui"
 candidate="hanasand_mail_ui_candidate"
 image="hanasand-mail-ui:${revision}"
-api_tunnel="http://127.0.0.1:19911/api"
+api_tunnel="http://127.0.0.1:19911"
 if [[ ! -f "$config" ]]; then
     echo "OpenResty config not found: $config" >&2
     exit 1
@@ -20,7 +20,7 @@ if [[ -n "$(git -C "$repo_root" status --porcelain)" ]]; then
     echo 'The mail app checkout must be clean before deployment.' >&2
     exit 1
 fi
-if ! curl --fail --silent --show-error --max-time 3 "$api_tunnel/health" | grep -q '"service":"hanasand_api"'; then
+if ! curl --fail --silent --show-error --max-time 3 "$api_tunnel/health" | grep -q '"service":"api"'; then
     echo 'The loopback mail API tunnel is unavailable; refusing to deploy.' >&2
     exit 1
 fi
