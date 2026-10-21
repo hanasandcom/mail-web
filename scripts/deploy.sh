@@ -196,9 +196,12 @@ if ! docker exec openresty /usr/local/openresty/bin/openresty -t >/dev/null; the
     exit 1
 fi
 docker exec openresty /usr/local/openresty/bin/openresty -s reload
+curl_local_mail() {
+    curl --haproxy-protocol --resolve mail.hanasand.com:8443:127.0.0.1 "$@"
+}
 mail_route_ready=false
 for attempt in $(seq 1 20); do
-    if curl --fail --silent --max-time 5 --resolve mail.hanasand.com:443:127.0.0.1 https://mail.hanasand.com/health | grep -q '"service":"hanasand-mail"'; then
+    if curl_local_mail --fail --silent --max-time 5 https://mail.hanasand.com:8443/health | grep -q '"service":"hanasand-mail"'; then
         mail_route_ready=true
         break
     fi
@@ -211,7 +214,7 @@ if [[ "$mail_route_ready" != true ]]; then
     docker rm -f "${container}_next" >/dev/null 2>&1 || true
     exit 1
 fi
-api_status="$(curl --silent --show-error --max-time 5 --resolve mail.hanasand.com:443:127.0.0.1 --output /dev/null --write-out '%{http_code}' https://mail.hanasand.com/api/mail/overview || true)"
+api_status="$(curl_local_mail --silent --show-error --max-time 5 --output /dev/null --write-out '%{http_code}' https://mail.hanasand.com:8443/api/mail/overview || true)"
 if [[ "$api_status" != 401 ]]; then
     echo "Dedicated Mail API route returned HTTP ${api_status:-no response}; rolling back." >&2
     cp -p "$backup" "$config"
@@ -221,7 +224,7 @@ if [[ "$api_status" != 401 ]]; then
     compose_api down >/dev/null 2>&1 || true
     exit 1
 fi
-mail_root="$(curl --fail --silent --show-error --max-time 5 --resolve mail.hanasand.com:443:127.0.0.1 https://mail.hanasand.com/ || true)"
+mail_root="$(curl_local_mail --fail --silent --show-error --max-time 5 https://mail.hanasand.com:8443/ || true)"
 if ! grep -q 'Sign in to your mailbox' <<<"$mail_root"; then
     echo 'Standalone mail root did not show its own sign-in page; rolling back.' >&2
     cp -p "$backup" "$config"
@@ -231,7 +234,7 @@ if ! grep -q 'Sign in to your mailbox' <<<"$mail_root"; then
     compose_api down >/dev/null 2>&1 || true
     exit 1
 fi
-identity_status="$(curl --silent --show-error --max-time 5 --resolve mail.hanasand.com:443:127.0.0.1 --output /dev/null --write-out '%{http_code}' https://mail.hanasand.com/api/auth/roles/user/health-check || true)"
+identity_status="$(curl_local_mail --silent --show-error --max-time 5 --output /dev/null --write-out '%{http_code}' https://mail.hanasand.com:8443/api/auth/roles/user/health-check || true)"
 if [[ "$identity_status" != 401 ]]; then
     echo "Mail host Identity route returned HTTP ${identity_status:-no response}, expected 401 for an unauthenticated role lookup; rolling back." >&2
     cp -p "$backup" "$config"
@@ -241,11 +244,11 @@ if [[ "$identity_status" != 401 ]]; then
     compose_api down >/dev/null 2>&1 || true
     exit 1
 fi
-cors_headers="$(curl --silent --show-error --max-time 5 --resolve mail.hanasand.com:443:127.0.0.1 --dump-header - --output /dev/null --request OPTIONS \
+cors_headers="$(curl_local_mail --silent --show-error --max-time 5 --dump-header - --output /dev/null --request OPTIONS \
     -H 'Origin: https://hanasand.com' \
     -H 'Access-Control-Request-Method: GET' \
     -H 'Access-Control-Request-Headers: authorization,content-type,dpop,id' \
-    https://mail.hanasand.com/api/mail/overview || true)"
+    https://mail.hanasand.com:8443/api/mail/overview || true)"
 if ! tr -d '\r' <<<"$cors_headers" | grep -qi '^access-control-allow-origin: https://hanasand.com$'; then
     echo 'Mail API CORS did not allow the Hanasand dashboard; rolling back.' >&2
     cp -p "$backup" "$config"
