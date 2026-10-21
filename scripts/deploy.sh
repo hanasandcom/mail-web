@@ -89,9 +89,6 @@ api_location = '''    location ^~ /api/backend/mail/ {
         proxy_set_header Authorization $http_authorization;
         proxy_set_header id $http_id;
         include snippets/proxy-headers.conf;
-        proxy_connect_timeout 3s;
-        proxy_send_timeout 20s;
-        proxy_read_timeout 20s;
     }
 '''
 api_pattern = re.compile(r'(?ms)^\s*location\s+\^~\s+/api/backend/mail/\s*\{.*?^\s*\}')
