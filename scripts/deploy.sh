@@ -158,7 +158,7 @@ text = path.read_text()
 matches = []
 for start in re.finditer(r'(?m)^server\s*\{', text):
     depth = 0
-    for index in range(start.start(), len(text)):
+    for index in range(start.end() - 1, len(text)):
         depth += text[index] == '{'
         depth -= text[index] == '}'
         if depth == 0:
