@@ -1,4 +1,4 @@
-import { AlertCircle, CheckCircle2, Info } from 'lucide-react'
+import { CheckCircle2, Info } from 'lucide-react'
 
 type ErrorNoticeProps = {
     message: string | boolean | null | undefined
@@ -14,8 +14,8 @@ type ErrorNoticeProps = {
 
 const variants = {
     error: {
-        icon: AlertCircle,
-        iconTone: 'text-ui-muted',
+        icon: null,
+        iconTone: '',
         shell: 'border-ui-border bg-ui-panel text-ui-text',
         title: 'text-ui-text',
         body: 'text-ui-text',
@@ -63,7 +63,7 @@ export default function ErrorNotice({
     return (
         <div className={`rounded-lg border shadow-sm ${tone.shell} ${compact ? 'px-3 py-2' : 'px-3.5 py-3'} ${className}`}>
             <div className='flex min-w-0 items-start gap-2.5'>
-                <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${tone.iconTone}`} />
+                {Icon ? <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${tone.iconTone}`} /> : null}
                 <div className='min-w-0 flex-1'>
                     {title ? <p className={`text-xs font-semibold ${tone.title}`}>{title}</p> : null}
                     <p className={`${compact ? 'text-xs' : 'text-sm'} font-normal leading-5 ${tone.body}`}>{message}</p>

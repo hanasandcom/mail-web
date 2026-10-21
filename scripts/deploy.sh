@@ -26,12 +26,19 @@ fi
 api_cors_headers="$(curl --silent --show-error --max-time 5 --dump-header - --output /dev/null --request OPTIONS \
     -H 'Origin: https://mail.hanasand.com' \
     -H 'Access-Control-Request-Method: GET' \
-    -H 'Access-Control-Request-Headers: authorization,content-type,id,idempotency-key' \
+    -H 'Access-Control-Request-Headers: authorization,content-type,dpop,id,idempotency-key,x-device-public-jwk' \
     https://api.hanasand.com/api/mail/overview || true)"
 if ! tr -d '\r' <<<"$api_cors_headers" | grep -qi '^access-control-allow-origin: https://mail.hanasand.com$'; then
     echo 'The public mail API does not allow browser requests from mail.hanasand.com; refusing to deploy.' >&2
     exit 1
 fi
+allowed_headers="$(tr -d '\r' <<<"$api_cors_headers" | sed -n 's/^[Aa]ccess-Control-Allow-Headers: //p' | tr '[:upper:]' '[:lower:]')"
+for required_header in dpop x-device-public-jwk; do
+    if ! grep -Eq "(^|,)${required_header}(,|$)" <<<"$allowed_headers"; then
+        echo "The public mail API does not allow the ${required_header} device-proof header; refusing to deploy." >&2
+        exit 1
+    fi
+done
 if ! docker image inspect "$image" >/dev/null 2>&1; then
     docker build --pull -t "$image" "$repo_root"
 fi
