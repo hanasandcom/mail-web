@@ -199,6 +199,16 @@ docker exec openresty /usr/local/openresty/bin/openresty -s reload
 curl_local_mail() {
     curl --haproxy-protocol --resolve mail.hanasand.com:8443:127.0.0.1 "$@"
 }
+if ! docker exec openresty /usr/local/openresty/bin/openresty -T 2>&1 \
+    | grep -Fq "proxy_pass http://127.0.0.1:${api_port};"; then
+    echo 'OpenResty did not load the candidate Mail API route; rolling back.' >&2
+    cp -p "$backup" "$config"
+    docker exec openresty /usr/local/openresty/bin/openresty -t >/dev/null
+    docker exec openresty /usr/local/openresty/bin/openresty -s reload >/dev/null
+    docker rm -f "${container}_next" >/dev/null 2>&1 || true
+    compose_api down >/dev/null 2>&1 || true
+    exit 1
+fi
 mail_route_ready=false
 for attempt in $(seq 1 20); do
     if curl_local_mail --fail --silent --max-time 5 https://mail.hanasand.com:8443/health | grep -q '"service":"hanasand-mail"'; then
@@ -216,7 +226,9 @@ if [[ "$mail_route_ready" != true ]]; then
 fi
 api_status="$(curl_local_mail --silent --show-error --max-time 5 --output /dev/null --write-out '%{http_code}' https://mail.hanasand.com:8443/api/mail/overview || true)"
 if [[ "$api_status" != 401 ]]; then
-    echo "Dedicated Mail API route returned HTTP ${api_status:-no response}; rolling back." >&2
+    api_response_headers="$(curl_local_mail --silent --show-error --max-time 5 --dump-header - --output /dev/null https://mail.hanasand.com:8443/api/mail/overview || true)"
+    echo "Dedicated Mail API route returned HTTP ${api_status:-no response}; response headers follow; rolling back." >&2
+    tr -d '\r' <<<"$api_response_headers" | grep -iE '^(HTTP/|server:|content-type:|x-powered-by:|via:)' >&2 || true
     cp -p "$backup" "$config"
     docker exec openresty /usr/local/openresty/bin/openresty -t >/dev/null
     docker exec openresty /usr/local/openresty/bin/openresty -s reload >/dev/null
