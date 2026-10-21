@@ -24,7 +24,7 @@ async function queryMessagePage(username: string, password: string, mailboxId: s
     ])
     const ids = query.ids || []
     const pageIds = ids.slice(0, limit)
-    const messages = pageIds.length ? await getEmailsByIds(username, password, session, accountId, pageIds) : []
+    const messages = pageIds.length ? await getEmailsByIds(username, password, session, accountId, pageIds, false) : []
     const byId = new Map(messages.map(message => [message.id, message]))
     return {
         messages: pageIds.flatMap(id => byId.has(id) ? [toSummary(byId.get(id)!)] : []),
@@ -56,18 +56,20 @@ export async function listInboxMessagesForFiltering(username: string, password: 
     return listMessages(username, password, mailboxId, 100)
 }
 
-async function getEmailsByIds(username: string, password: string, session: JmapSession, accountId: string, ids: string[]) {
+async function getEmailsByIds(username: string, password: string, session: JmapSession, accountId: string, ids: string[], includeBody = true) {
     const response = await jmapCall<{ list?: EmailRecord[] }>(username, password, session, [
         ['Email/get', {
             accountId,
             ids,
-            properties: ['id', 'threadId', 'mailboxIds', 'keywords', 'subject', 'preview', 'receivedAt', 'sentAt', 'from', 'to', 'cc', 'bcc', 'replyTo', 'hasAttachment', 'attachments', 'textBody', 'htmlBody', 'bodyValues'],
-            fetchAllBodyValues: true,
+            properties: includeBody
+                ? ['id', 'threadId', 'mailboxIds', 'keywords', 'subject', 'preview', 'receivedAt', 'sentAt', 'from', 'to', 'cc', 'bcc', 'replyTo', 'hasAttachment', 'attachments', 'textBody', 'htmlBody', 'bodyValues']
+                : ['id', 'threadId', 'mailboxIds', 'keywords', 'subject', 'preview', 'receivedAt', 'sentAt', 'from', 'to', 'cc', 'hasAttachment'],
+            ...(includeBody ? { fetchAllBodyValues: true } : {}),
         }, 'emails']
     ])
 
     const messages = response.list || []
-    await attributeContactSenders(messages)
+    if (includeBody) await attributeContactSenders(messages)
     return messages
 }
 
