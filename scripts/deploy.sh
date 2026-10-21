@@ -178,7 +178,6 @@ replacement = f'''    location ^~ /api/auth/ {{
     location ^~ /api/mail/ {{
         client_max_body_size 25m;
         proxy_request_buffering off;
-        proxy_read_timeout 30s;
         proxy_pass http://127.0.0.1:{api_port};
         include snippets/proxy-headers.conf;
     }}
