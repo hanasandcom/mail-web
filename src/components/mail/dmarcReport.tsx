@@ -22,7 +22,7 @@ export default function DmarcReportPreview({ attachment, mailboxUser, reputation
             setError('This report is too large to preview. Download the attachment to read it.')
             return
         }
-        const safeToRead = !checking && reputation && reputation.status !== 'unavailable' && (reputation.status === 'unknown' || (reputation.flagged ?? 0) === 0)
+        const safeToRead = !checking && reputation?.status === 'known' && reputation.flagged === 0
         if (!safeToRead) {
             setError(checking ? 'Checking VirusTotal before loading this report.' : 'VirusTotal could not confirm this report is clear, so it remains blocked.')
             return

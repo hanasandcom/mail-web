@@ -277,7 +277,7 @@ export async function fileToDraftAttachment(file: File): Promise<DraftAttachment
 export function AttachmentPreview({ attachment, mailboxUser, reputation, checking }: { attachment: MailAttachment, mailboxUser: string, reputation?: MailReputation, checking: boolean }) {
     const [url, setUrl] = useState('')
     const [error, setError] = useState(false)
-    const allowedByReputation = !checking && Boolean(reputation && reputation.status !== 'unavailable' && (reputation.status === 'unknown' || (reputation.flagged ?? 0) === 0))
+    const allowedByReputation = !checking && reputation?.status === 'known' && reputation.flagged === 0
     useEffect(() => {
         const controller = new AbortController()
         let objectUrl = ''
@@ -302,6 +302,8 @@ export function AttachmentPreview({ attachment, mailboxUser, reputation, checkin
         ? 'Checking VirusTotal…'
         : !reputation || reputation.status === 'unavailable'
             ? 'VirusTotal status unavailable; download blocked.'
+            : reputation.status === 'unknown'
+                ? 'VirusTotal has no report for this file; download blocked.'
             : reputation.status === 'known' && (reputation.flagged ?? 0) > 0
                 ? 'Download blocked because VirusTotal found a potential threat.'
                 : 'Loading attachment…'

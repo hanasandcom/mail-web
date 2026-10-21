@@ -31,7 +31,10 @@ test('HTML mail blocks remote images until the user loads images with a cached s
             mailboxes: [{ id: 'inbox', name: 'Inbox', role: 'inbox', totalEmails: 1 }],
             selectedMailboxId: 'inbox', messages: [message], nextCursor: null,
             selectedMessage: params.get('messageId') ? {
-                ...message, replyTo: [], bcc: [], attachments: [{ blobId: 'file-1', name: 'danger.html', type: 'text/html', size: 2048 }], textBody: 'Example',
+                ...message, replyTo: [], bcc: [], attachments: [
+                    { blobId: 'file-1', name: 'danger.html', type: 'text/html', size: 2048 },
+                    { blobId: 'file-2', name: 'unreported.pdf', type: 'application/pdf', size: 4096 },
+                ], textBody: 'Example',
                 htmlBody: `<p>Message body</p><img alt="safe" src="${safeUrl}" srcset="${unknownUrl} 2x"><img alt="flagged" src="${flaggedUrl}"><img alt="unknown" src="${unknownUrl}"><div style="background-image:url('${flaggedUrl}')">Styled content</div><video poster="https://safe-poster.example.test/poster.png"></video>`,
             } : null,
             filters: [], recentRecipients: [],
@@ -47,8 +50,16 @@ test('HTML mail blocks remote images until the user loads images with a cached s
                 { id: idFor(unknownUrl), url: unknownUrl, reputation: { provider: 'virustotal', status: 'unknown' } },
                 { id: idFor('https://safe-poster.example.test/poster.png'), url: 'https://safe-poster.example.test/poster.png', reputation: { provider: 'virustotal', status: 'known', flagged: 0, total: 90 } },
             ],
-            attachments: [{ blobId: 'file-1', name: 'danger.html', size: 2048, reputation: { provider: 'virustotal', status: 'known', flagged: 4, total: 90 } }],
+            attachments: [
+                { blobId: 'file-1', name: 'danger.html', size: 2048, reputation: { provider: 'virustotal', status: 'known', flagged: 4, total: 90 } },
+                { blobId: 'file-2', name: 'unreported.pdf', size: 4096, reputation: { provider: 'virustotal', status: 'unknown' } },
+            ],
         } })
+    })
+    let attachmentRequests = 0
+    await page.route('**/api/mail/blob/**', async route => {
+        attachmentRequests++
+        await route.fulfill({ status: 200, contentType: 'application/octet-stream', body: 'attachment' })
     })
     await page.route('https://safe-images.example.test/**', route => route.fulfill({ status: 200, contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p6sAAAAASUVORK5CYII=', 'base64') }))
     await page.route('https://flagged-images.example.test/**', route => route.fulfill({ status: 200, contentType: 'image/png', body: '' }))
@@ -60,9 +71,11 @@ test('HTML mail blocks remote images until the user loads images with a cached s
     await expect(frame.getByText('Message body')).toBeVisible()
     await expect(page.getByRole('button', { name: 'Load safe remote images' })).toBeVisible()
     await expect(page.getByText('Potential threat: 4 / 90 scanners flagged')).toBeVisible()
+    await expect(page.getByText('VirusTotal has no report for this file; download blocked.')).toBeVisible()
     await expect(page.getByText(/may reveal your IP address/)).toBeVisible()
     await page.waitForTimeout(150)
     expect(imageRequests).toEqual([])
+    expect(attachmentRequests).toBe(0)
 
     await page.getByRole('button', { name: 'Load safe remote images' }).click()
     await expect.poll(() => imageRequests).toContain(safeUrl)
