@@ -39,8 +39,11 @@ services:
       MAIL_SMTP_REQUIRE_TLS: ${MAIL_SMTP_REQUIRE_TLS:-true}
       VIRUSTOTAL_API_KEY: ${VIRUSTOTAL_API_KEY:-}
     networks:
-      - mail-backend
-      - identity-proxy
+      mail-backend:
+        # Keep a reserved address so Stalwart's production network policy can
+        # recognize this API across candidate and active container replacements.
+        ipv4_address: ${MAIL_API_IPV4_ADDRESS:?Set a reserved Mail API address on the mail network}
+      identity-proxy: {}
 
 networks:
   mail-backend:
