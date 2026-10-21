@@ -87,14 +87,19 @@ if [[ ! "$api_ipv4_address" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
     exit 1
 fi
 api_project="hanasand-mail-api-${api_port}"
+compose_api_for() {
+    local port="$1" address="$2" project="$3"
+    shift 3
+    MAIL_API_IMAGE="$api_image" MAIL_API_PORT="$port" MAIL_API_IPV4_ADDRESS="$address" \
+        docker compose --project-name "$project" --env-file "$production_env" -f "$api_compose" "$@"
+}
 compose_api() {
-    MAIL_API_IMAGE="$api_image" MAIL_API_PORT="$api_port" MAIL_API_IPV4_ADDRESS="$api_ipv4_address" \
-        docker compose --project-name "$api_project" --env-file "$production_env" -f "$api_compose" "$@"
+    compose_api_for "$api_port" "$api_ipv4_address" "$api_project" "$@"
 }
 
 compose_api build
 compose_api up -d --no-build --wait
-api_container="$(docker compose --project-name "$api_project" --env-file "$production_env" -f "$api_compose" ps -q mail-api)"
+api_container="$(compose_api ps -q mail-api)"
 if [[ -z "$api_container" || "$(docker inspect -f '{{.State.Health.Status}}' "$api_container")" != healthy ]]; then
     echo 'Mail API candidate did not become healthy.' >&2
     compose_api down >/dev/null 2>&1 || true
@@ -256,7 +261,8 @@ docker rename "${container}_next" "$container"
 if [[ "$active_api_port" != 0 ]]; then
     old_api_project="hanasand-mail-api-${active_api_port}"
     sleep 5
-    docker compose --project-name "$old_api_project" --env-file "$production_env" -f "$api_compose" down >/dev/null 2>&1 || true
+    old_api_ipv4_address="$(awk -F= -v key="MAIL_API_IPV4_ADDRESS_${active_api_port}" '$1 == key { sub(/^[^=]*=/, ""); print; exit }' "$production_env")"
+    compose_api_for "$active_api_port" "$old_api_ipv4_address" "$old_api_project" down >/dev/null 2>&1 || true
 fi
 finished=true
 config_changed=false
