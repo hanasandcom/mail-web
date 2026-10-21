@@ -224,8 +224,17 @@ if [[ "$mail_route_ready" != true ]]; then
     docker rm -f "${container}_next" >/dev/null 2>&1 || true
     exit 1
 fi
-api_status="$(curl_local_mail --silent --show-error --max-time 5 --output /dev/null --write-out '%{http_code}' https://mail.hanasand.com:8443/api/mail/overview || true)"
-if [[ "$api_status" != 401 ]]; then
+api_route_ready=false
+api_status=""
+for attempt in $(seq 1 20); do
+    api_status="$(curl_local_mail --silent --show-error --max-time 5 --output /dev/null --write-out '%{http_code}' https://mail.hanasand.com:8443/api/mail/overview || true)"
+    if [[ "$api_status" == 401 ]]; then
+        api_route_ready=true
+        break
+    fi
+    sleep 1
+done
+if [[ "$api_route_ready" != true ]]; then
     api_response_headers="$(curl_local_mail --silent --show-error --max-time 5 --dump-header - --output /dev/null https://mail.hanasand.com:8443/api/mail/overview || true)"
     echo "Dedicated Mail API route returned HTTP ${api_status:-no response}; response headers follow; rolling back." >&2
     tr -d '\r' <<<"$api_response_headers" | grep -iE '^(HTTP/|server:|content-type:|x-powered-by:|via:)' >&2 || true
