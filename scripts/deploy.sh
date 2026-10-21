@@ -199,6 +199,15 @@ docker exec openresty /usr/local/openresty/bin/openresty -s reload
 curl_local_mail() {
     curl --haproxy-protocol --resolve mail.hanasand.com:8443:127.0.0.1 "$@"
 }
+wait_for_mail_status() {
+    local expected="$1" url="$2" status
+    for attempt in $(seq 1 20); do
+        status="$(curl_local_mail --silent --show-error --max-time 5 --output /dev/null --write-out '%{http_code}' "$url" || true)"
+        if [[ "$status" == "$expected" ]]; then return 0; fi
+        sleep 1
+    done
+    return 1
+}
 if ! docker exec openresty /usr/local/openresty/bin/openresty -T 2>&1 \
     | grep -Fq "proxy_pass http://127.0.0.1:${api_port};"; then
     echo 'OpenResty did not load the candidate Mail API route; rolling back.' >&2
@@ -224,17 +233,8 @@ if [[ "$mail_route_ready" != true ]]; then
     docker rm -f "${container}_next" >/dev/null 2>&1 || true
     exit 1
 fi
-api_route_ready=false
-api_status=""
-for attempt in $(seq 1 20); do
+if ! wait_for_mail_status 401 https://mail.hanasand.com:8443/api/mail/overview; then
     api_status="$(curl_local_mail --silent --show-error --max-time 5 --output /dev/null --write-out '%{http_code}' https://mail.hanasand.com:8443/api/mail/overview || true)"
-    if [[ "$api_status" == 401 ]]; then
-        api_route_ready=true
-        break
-    fi
-    sleep 1
-done
-if [[ "$api_route_ready" != true ]]; then
     api_response_headers="$(curl_local_mail --silent --show-error --max-time 5 --dump-header - --output /dev/null https://mail.hanasand.com:8443/api/mail/overview || true)"
     echo "Dedicated Mail API route returned HTTP ${api_status:-no response}; response headers follow; rolling back." >&2
     tr -d '\r' <<<"$api_response_headers" | grep -iE '^(HTTP/|server:|content-type:|x-powered-by:|via:)' >&2 || true
@@ -255,8 +255,9 @@ if ! grep -q 'Sign in to your mailbox' <<<"$mail_root"; then
     compose_api down >/dev/null 2>&1 || true
     exit 1
 fi
-identity_status="$(curl_local_mail --silent --show-error --max-time 5 --output /dev/null --write-out '%{http_code}' https://mail.hanasand.com:8443/api/auth/roles/user/health-check || true)"
-if [[ "$identity_status" != 401 ]]; then
+identity_url=https://mail.hanasand.com:8443/api/auth/roles/user/health-check
+if ! wait_for_mail_status 401 "$identity_url"; then
+    identity_status="$(curl_local_mail --silent --show-error --max-time 5 --output /dev/null --write-out '%{http_code}' "$identity_url" || true)"
     echo "Mail host Identity route returned HTTP ${identity_status:-no response}, expected 401 for an unauthenticated role lookup; rolling back." >&2
     cp -p "$backup" "$config"
     docker exec openresty /usr/local/openresty/bin/openresty -t >/dev/null
@@ -265,12 +266,20 @@ if [[ "$identity_status" != 401 ]]; then
     compose_api down >/dev/null 2>&1 || true
     exit 1
 fi
-cors_headers="$(curl_local_mail --silent --show-error --max-time 5 --dump-header - --output /dev/null --request OPTIONS \
-    -H 'Origin: https://hanasand.com' \
-    -H 'Access-Control-Request-Method: GET' \
-    -H 'Access-Control-Request-Headers: authorization,content-type,dpop,id' \
-    https://mail.hanasand.com:8443/api/mail/overview || true)"
-if ! tr -d '\r' <<<"$cors_headers" | grep -qi '^access-control-allow-origin: https://hanasand.com$'; then
+cors_allowed=false
+for attempt in $(seq 1 20); do
+    cors_headers="$(curl_local_mail --silent --show-error --max-time 5 --dump-header - --output /dev/null --request OPTIONS \
+        -H 'Origin: https://hanasand.com' \
+        -H 'Access-Control-Request-Method: GET' \
+        -H 'Access-Control-Request-Headers: authorization,content-type,dpop,id' \
+        https://mail.hanasand.com:8443/api/mail/overview || true)"
+    if tr -d '\r' <<<"$cors_headers" | grep -qi '^access-control-allow-origin: https://hanasand.com$'; then
+        cors_allowed=true
+        break
+    fi
+    sleep 1
+done
+if [[ "$cors_allowed" != true ]]; then
     echo 'Mail API CORS did not allow the Hanasand dashboard; rolling back.' >&2
     cp -p "$backup" "$config"
     docker exec openresty /usr/local/openresty/bin/openresty -t >/dev/null
