@@ -4,7 +4,8 @@ Standalone webmail for `mail.hanasand.com`. The Hanasand API owns mailbox data a
 actions; this app does not store mailboxes. The browser calls `api.hanasand.com` directly
 with the signed-in session. The API allows the mail site through its CORS policy, so mail
 requests do not pass through another UI or a mail-specific proxy. OpenResty serves this
-app at `mail.hanasand.com`.
+app at `mail.hanasand.com`. The page loads Identity's device-proof client before the
+app and signs authenticated API requests with its browser-held P-256 key.
 
 ## Develop
 
