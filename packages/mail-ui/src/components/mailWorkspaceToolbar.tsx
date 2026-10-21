@@ -56,7 +56,7 @@ export function MailWorkspaceToolbar({ overview, selectedMailboxId, unreadCount,
                         onChange={mailboxId => { onMailboxChange(mailboxId) }}
                         options={overview.mailboxes.map(mailbox => ({ id: mailbox.id, label: mailbox.name }))}
                         compact
-                        className='w-28 @3xl:hidden'
+                        className='w-32 @3xl:hidden'
                     /> : null}
                     <div className='flex flex-wrap items-center gap-2 text-xs font-semibold text-ui-muted' data-mail-counts>
                         {overview ? <>
