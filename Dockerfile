@@ -1,10 +1,13 @@
 FROM oven/bun:1.3.11 AS dependencies
 WORKDIR /app
 COPY package.json bun.lock ./
+COPY packages/mail-ui ./packages/mail-ui
 RUN bun install --frozen-lockfile
 
 FROM oven/bun:1.3.11 AS builder
 WORKDIR /app
+ARG NEXT_PUBLIC_MAIL_API_BASE=https://mail.hanasand.com/api
+ENV NEXT_PUBLIC_MAIL_API_BASE=${NEXT_PUBLIC_MAIL_API_BASE}
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY . .
 RUN bun run build

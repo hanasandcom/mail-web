@@ -1,0 +1,51 @@
+services:
+  mail-api:
+    image: ${MAIL_API_IMAGE:-hanasand-mail-api:local}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${MAIL_API_PORT:-8085}:8081"
+    environment:
+      PORT: "8081"
+      MAIL_API_CORS_ORIGINS: ${MAIL_API_CORS_ORIGINS:-https://mail.hanasand.com,https://hanasand.com,https://www.hanasand.com}
+      HANASAND_IDENTITY_SERVICE_URL: ${HANASAND_IDENTITY_SERVICE_URL:-http://identity:8081}
+      HANASAND_IDENTITY_SERVICE_TOKEN: ${HANASAND_IDENTITY_SERVICE_TOKEN:?Set the Identity service credential}
+      PGHOST: ${DB_HOST:-hanasand_database}
+      PGPORT: ${DB_PORT:-5432}
+      PGUSER: ${DB_USER:-hanasand}
+      PGPASSWORD: ${DB_PASSWORD:?Set the database credential}
+      PGDATABASE: ${DB:-hanasand}
+      DB_MAX_CONN: ${MAIL_API_DB_MAX_CONN:-8}
+      MAIL_SERVICE_KEY: ${MAIL_SERVICE_KEY:?Set the current mail encryption key}
+      MAIL_SERVICE_KEY_PREVIOUS: ${MAIL_SERVICE_KEY_PREVIOUS:-}
+      MAIL_SERVICE_KEY_LEGACY_1: ${MAIL_SERVICE_KEY_LEGACY_1:-}
+      MAIL_SERVICE_KEY_LEGACY_2: ${MAIL_SERVICE_KEY_LEGACY_2:-}
+      MAIL_INTERNAL_URL: ${MAIL_INTERNAL_URL:-http://stalwart:8080}
+      MAIL_HOST: ${MAIL_HOST:-mail.hanasand.com}
+      MAIL_DOMAIN: ${MAIL_DOMAIN:-hanasand.com}
+      MAIL_ADMIN_USERNAME: ${MAIL_ADMIN_USERNAME:-admin}
+      MAIL_ADMIN_PASSWORD: ${MAIL_ADMIN_PASSWORD:-}
+      MAIL_USER_ALIASES: ${MAIL_USER_ALIASES:-eirikhanasand:eirik}
+      MAIL_SYSTEM_MAILBOX_USER: ${MAIL_SYSTEM_MAILBOX_USER:-eirikhanasand}
+      MAIL_SYSTEM_SENDER_LOCAL_PART: ${MAIL_SYSTEM_SENDER_LOCAL_PART:-noreply}
+      MAIL_SYSTEM_ALIASES: ${MAIL_SYSTEM_ALIASES:-postmaster,abuse,hostmaster,tls-reports,noreply-dmarc}
+      MAIL_IMAP_PORT: ${MAIL_IMAP_PORT:-993}
+      MAIL_SMTP_PORT: ${MAIL_SMTP_PORT:-587}
+      MAIL_SMTP_INTERNAL_PORT: ${MAIL_SMTP_INTERNAL_PORT:-587}
+      MAIL_MANAGESIEVE_PORT: ${MAIL_MANAGESIEVE_PORT:-4190}
+      MAIL_JMAP_TIMEOUT_MS: ${MAIL_JMAP_TIMEOUT_MS:-8000}
+      MAIL_SMTP_REQUIRE_TLS: ${MAIL_SMTP_REQUIRE_TLS:-true}
+      VIRUSTOTAL_API_KEY: ${VIRUSTOTAL_API_KEY:-}
+    networks:
+      - mail-backend
+      - identity-proxy
+
+networks:
+  mail-backend:
+    external: true
+    name: ${MAIL_API_DOCKER_NETWORK:-hanasand_hanasandnet}
+  identity-proxy:
+    external: true
+    name: ${MAIL_IDENTITY_DOCKER_NETWORK:-hanasand_identity_proxy}

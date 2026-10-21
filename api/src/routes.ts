@@ -1,0 +1,22 @@
+import type { FastifyInstance } from 'fastify'
+import getMailOverview from './handlers/mail/getOverview.ts'
+import getMailSearch from './handlers/mail/getSearch.ts'
+import postSendMail from './handlers/mail/postSend.ts'
+import postMailAction from './handlers/mail/postAction.ts'
+import postMailbox from './handlers/mail/postMailbox.ts'
+import postMailFilter from './handlers/mail/postFilter.ts'
+import deleteMailFilter from './handlers/mail/deleteFilter.ts'
+import getMailBlob from './handlers/mail/getBlob.ts'
+import getMailMessageReputation from './handlers/mail/getMessageReputation.ts'
+
+export async function registerMailRoutes(app: FastifyInstance) {
+    app.get('/mail/overview', getMailOverview)
+    app.get('/mail/search', getMailSearch)
+    app.post('/mail/send', postSendMail)
+    app.post('/mail/mailboxes', postMailbox)
+    app.post('/mail/message/:id/action', postMailAction)
+    app.get('/mail/message/:id/reputation', getMailMessageReputation)
+    app.post('/mail/filters', postMailFilter)
+    app.delete('/mail/filters/:id', deleteMailFilter)
+    app.get('/mail/blob/:mailboxUser/:blobId/:name', getMailBlob)
+}

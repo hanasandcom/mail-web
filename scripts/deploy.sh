@@ -4,9 +4,17 @@ set -euo pipefail
 repo_root="$(git rev-parse --show-toplevel)"
 revision="$(git -C "$repo_root" rev-parse HEAD)"
 config="${HANASAND_MAIL_NGINX_CONFIG:-/home/hanasand/openresty/nginx/conf.d/default.conf}"
+production_env="${HANASAND_MAIL_API_ENV_FILE:-/home/hanasand/hanasand/.env}"
 container="hanasand_mail_ui"
 candidate="hanasand_mail_ui_candidate"
 image="hanasand-mail-ui:${revision}"
+api_image="hanasand-mail-api:${revision}"
+api_compose="$repo_root/api/compose.example.yml"
+api_project=""
+api_port=""
+backup=""
+config_changed=false
+finished=false
 if [[ ! -f "$config" ]]; then
     echo "OpenResty config not found: $config" >&2
     exit 1
@@ -19,32 +27,26 @@ if [[ -n "$(git -C "$repo_root" status --porcelain)" ]]; then
     echo 'The mail app checkout must be clean before deployment.' >&2
     exit 1
 fi
-if ! curl --fail --silent --show-error --max-time 5 https://api.hanasand.com/api/health | grep -q '"ok":true'; then
-    echo 'The public mail API is unavailable; refusing to deploy.' >&2
+if [[ ! -f "$production_env" || ! -f "$api_compose" ]]; then
+    echo 'Mail API production configuration is missing.' >&2
     exit 1
 fi
-api_cors_headers="$(curl --silent --show-error --max-time 5 --dump-header - --output /dev/null --request OPTIONS \
-    -H 'Origin: https://mail.hanasand.com' \
-    -H 'Access-Control-Request-Method: GET' \
-    -H 'Access-Control-Request-Headers: authorization,content-type,dpop,id,idempotency-key,x-device-public-jwk' \
-    https://api.hanasand.com/api/mail/overview || true)"
-if ! tr -d '\r' <<<"$api_cors_headers" | grep -qi '^access-control-allow-origin: https://mail.hanasand.com$'; then
-    echo 'The public mail API does not allow browser requests from mail.hanasand.com; refusing to deploy.' >&2
-    exit 1
-fi
-allowed_headers="$(tr -d '\r' <<<"$api_cors_headers" | sed -n 's/^[Aa]ccess-Control-Allow-Headers: //p' | tr '[:upper:]' '[:lower:]')"
-for required_header in dpop x-device-public-jwk; do
-    if ! grep -Eq "(^|,)${required_header}(,|$)" <<<"$allowed_headers"; then
-        echo "The public mail API does not allow the ${required_header} device-proof header; refusing to deploy." >&2
-        exit 1
-    fi
-done
-if ! docker image inspect "$image" >/dev/null 2>&1; then
-    docker build --pull -t "$image" "$repo_root"
-fi
+
+docker build --pull --build-arg NEXT_PUBLIC_MAIL_API_BASE=https://mail.hanasand.com/api -t "$image" "$repo_root"
 docker rm -f "$candidate" >/dev/null 2>&1 || true
 docker run -d --name "$candidate" --restart unless-stopped --read-only --tmpfs /tmp:rw,noexec,nosuid,size=32m --memory 512m --cpus 1 -p 127.0.0.1:3021:3000 "$image" >/dev/null
-cleanup() { docker rm -f "$candidate" >/dev/null 2>&1 || true; }
+cleanup() {
+    status=$?
+    if [[ "$config_changed" == true && -n "$backup" && -f "$backup" ]]; then
+        cp -p "$backup" "$config"
+        docker exec openresty /usr/local/openresty/bin/openresty -t >/dev/null 2>&1 || true
+        docker exec openresty /usr/local/openresty/bin/openresty -s reload >/dev/null 2>&1 || true
+    fi
+    docker rm -f "$candidate" "${container}_next" >/dev/null 2>&1 || true
+    if [[ "$finished" != true && -n "$api_project" ]]; then compose_api down >/dev/null 2>&1 || true; fi
+    [[ -z "$backup" ]] || rm -f "$backup"
+    exit "$status"
+}
 trap cleanup EXIT
 for attempt in $(seq 1 40); do
     if curl --fail --silent --show-error --max-time 3 http://127.0.0.1:3021/health | grep -q '"service":"hanasand-mail"'; then break; fi
@@ -57,24 +59,76 @@ done
 exec 9>/tmp/hanasand-full-deploy.lock
 flock -x 9
 
-active_port="$(python3 - "$config" <<'PYPORT'
+read -r active_port active_api_port < <(python3 - "$config" <<'PYPORT'
 from pathlib import Path
 import re, sys
 text = Path(sys.argv[1]).read_text()
-blocks = list(re.finditer(r'(?ms)^server\s*\{.*?^\}', text))
-matching = [match.group() for match in blocks if re.search(r'(?m)^\s*server_name\s+mail\.hanasand\.com\s*;', match.group())]
-if len(matching) != 1:
-    raise SystemExit('Expected exactly one mail.hanasand.com OpenResty server block.')
-proxy = re.search(r'(?m)^\s*proxy_pass\s+http://(?:localhost|127\.0\.0\.1):(\d+)\s*;', matching[0])
-if not proxy:
-    raise SystemExit('Could not find the mail web upstream.')
-print(proxy.group(1))
+matches = []
+for start in re.finditer(r'(?m)^server\s*\{', text):
+    depth = 0
+    for index in range(start.start(), len(text)):
+        depth += text[index] == '{'
+        depth -= text[index] == '}'
+        if depth == 0:
+            block = text[start.start():index + 1]
+            if re.search(r'(?m)^\s*server_name\s+mail\.hanasand\.com\s*;', block): matches.append(block)
+            break
+if len(matches) != 1: raise SystemExit('Expected exactly one mail.hanasand.com OpenResty server block.')
+web = re.search(r'(?m)^\s*location\s+/\s*\{[^}]*?proxy_pass\s+http://127\.0\.0\.1:(\d+)\s*;', matches[0])
+api = re.search(r'(?m)^\s*location\s+\^~\s+/api/mail/\s*\{[^}]*?proxy_pass\s+http://127\.0\.0\.1:(\d+)\s*;', matches[0])
+print(web.group(1) if web else '0', api.group(1) if api else '0')
 PYPORT
-)"
+)
 if [[ "$active_port" == 3010 ]]; then port=3011; else port=3010; fi
+if [[ "$active_api_port" == 8085 ]]; then api_port=8086; else api_port=8085; fi
+api_project="hanasand-mail-api-${api_port}"
+compose_api() {
+    MAIL_API_IMAGE="$api_image" MAIL_API_PORT="$api_port" \
+        docker compose --project-name "$api_project" --env-file "$production_env" -f "$api_compose" "$@"
+}
+
+compose_api build
+compose_api up -d --no-build --wait
+api_container="$(docker compose --project-name "$api_project" --env-file "$production_env" -f "$api_compose" ps -q mail-api)"
+if [[ -z "$api_container" || "$(docker inspect -f '{{.State.Health.Status}}' "$api_container")" != healthy ]]; then
+    echo 'Mail API candidate did not become healthy.' >&2
+    compose_api down >/dev/null 2>&1 || true
+    exit 1
+fi
+candidate_api_status="$(curl --silent --show-error --max-time 5 --output /dev/null --write-out '%{http_code}' "http://127.0.0.1:${api_port}/api/mail/overview" || true)"
+if [[ "$candidate_api_status" != 401 ]]; then
+    echo "Mail API candidate returned HTTP ${candidate_api_status:-no response}, expected 401." >&2
+    compose_api down >/dev/null 2>&1 || true
+    exit 1
+fi
+identity_probe_status="$(curl --silent --show-error --max-time 8 --output /dev/null --write-out '%{http_code}' \
+    -H 'id: mail-deployment-probe' \
+    -H 'Authorization: Bearer invalid-mail-deployment-probe' \
+    "http://127.0.0.1:${api_port}/api/mail/overview" || true)"
+if [[ "$identity_probe_status" != 401 ]]; then
+    echo "Mail API could not validate a session with Identity (HTTP ${identity_probe_status:-no response})." >&2
+    compose_api down >/dev/null 2>&1 || true
+    exit 1
+fi
+if ! docker exec "$api_container" bun -e '
+const base = process.env.MAIL_INTERNAL_URL || "http://127.0.0.1:8081"
+const response = await fetch(new URL("/jmap/session", base), { signal: AbortSignal.timeout(5000) })
+if (!response.ok) throw new Error(`Stalwart returned HTTP ${response.status}`)
+const session = await response.json()
+if (typeof session.apiUrl !== "string" || !session.apiUrl) throw new Error("Stalwart returned no JMAP API URL")
+console.log("Stalwart JMAP endpoint is reachable.")
+'; then
+    echo 'Mail API could not reach Stalwart JMAP.' >&2
+    compose_api down >/dev/null 2>&1 || true
+    exit 1
+fi
+if ! curl --fail --silent --show-error --max-time 5 http://127.0.0.1:8183/ready | grep -q '"service":"identity"'; then
+    echo 'Production Identity is not ready to validate mail sessions.' >&2
+    compose_api down >/dev/null 2>&1 || true
+    exit 1
+fi
 
 docker rm -f "$candidate" >/dev/null
-trap - EXIT
 docker rm -f "${container}_next" >/dev/null 2>&1 || true
 docker run -d --name "${container}_next" --restart unless-stopped --read-only --tmpfs /tmp:rw,noexec,nosuid,size=32m --memory 512m --cpus 1 -p "127.0.0.1:${port}:3000" "$image" >/dev/null
 for attempt in $(seq 1 40); do
@@ -83,32 +137,53 @@ for attempt in $(seq 1 40); do
     sleep 2
 done
 
-backup="${config}.mail-backup"
+backup="$(mktemp "${config}.mail-backup.XXXXXX")"
 cp -p "$config" "$backup"
-python3 - "$config" "$port" <<'PY'
+config_changed=true
+python3 - "$config" "$port" "$api_port" <<'PY'
 from pathlib import Path
 import re, sys
-path, port = Path(sys.argv[1]), sys.argv[2]
+path, port, api_port = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
 text = path.read_text()
-blocks = list(re.finditer(r'(?ms)^server\s*\{.*?^\}', text))
-matching = [match for match in blocks if re.search(r'(?m)^\s*server_name\s+mail\.hanasand\.com\s*;', match.group())]
-if len(matching) != 1:
-    raise SystemExit('Expected exactly one mail.hanasand.com OpenResty server block.')
-block = matching[0].group()
-proxy = re.compile(r'(?m)^(\s*proxy_pass\s+)http://(?:localhost|127\.0\.0\.1):(?:8081|3010|\d+)(;\s*)$')
-updated, count = proxy.subn(lambda m: f'{m.group(1)}http://127.0.0.1:{port}{m.group(2)}', block)
-if count != 1:
-    raise SystemExit('Expected exactly one HTTP proxy_pass in the mail server block.')
-api_pattern = re.compile(r'(?ms)^\s*location\s+\^~\s+/api/backend/mail/\s*\{.*?^\s*\}')
-updated, api_count = api_pattern.subn('', updated)
-if api_count > 1:
-    raise SystemExit('Found multiple legacy mail API proxy locations.')
-path.write_text(text[:matching[0].start()] + updated + text[matching[0].end():])
+matches = []
+for start in re.finditer(r'(?m)^server\s*\{', text):
+    depth = 0
+    for index in range(start.start(), len(text)):
+        depth += text[index] == '{'
+        depth -= text[index] == '}'
+        if depth == 0:
+            block = text[start.start():index + 1]
+            if re.search(r'(?m)^\s*server_name\s+mail\.hanasand\.com\s*;', block): matches.append((start.start(), index + 1, block))
+            break
+if len(matches) != 1: raise SystemExit('Expected exactly one mail.hanasand.com server block.')
+start, end, block = matches[0]
+for route in (r'/api/auth/', r'/api/mail/', r'/api/backend/mail/'):
+    block, _ = re.subn(rf'(?ms)^\s*location\s+\^~\s+{re.escape(route)}\s*\{{.*?^\s*\}}\s*', '', block)
+root = re.compile(r'(?ms)^\s*location\s+/\s*\{.*?^\s*\}')
+replacement = f'''    location ^~ /api/auth/ {{
+        proxy_pass http://127.0.0.1:8183;
+        include snippets/proxy-headers.conf;
+    }}
+
+    location ^~ /api/mail/ {{
+        client_max_body_size 25m;
+        proxy_request_buffering off;
+        proxy_read_timeout 30s;
+        proxy_pass http://127.0.0.1:{api_port};
+        include snippets/proxy-headers.conf;
+    }}
+
+    location / {{
+        log_by_lua_file /usr/local/openresty/nginx/lua/traffic_logger.lua;
+        proxy_pass http://127.0.0.1:{port};
+        include snippets/proxy-headers.conf;
+    }}'''
+updated, count = root.subn(replacement, block)
+if count != 1: raise SystemExit('Expected exactly one root location in the mail server block.')
+path.write_text(text[:start] + updated + text[end:])
 PY
 if ! docker exec openresty /usr/local/openresty/bin/openresty -t >/dev/null; then
-    cp -p "$backup" "$config"
-    docker exec openresty /usr/local/openresty/bin/openresty -s reload >/dev/null 2>&1 || true
-    docker rm -f "${container}_next" >/dev/null 2>&1 || true
+    echo 'OpenResty rejected the mail route configuration; rolling back.' >&2
     exit 1
 fi
 docker exec openresty /usr/local/openresty/bin/openresty -s reload
@@ -127,15 +202,57 @@ if [[ "$mail_route_ready" != true ]]; then
     docker rm -f "${container}_next" >/dev/null 2>&1 || true
     exit 1
 fi
-api_status="$(curl --silent --show-error --max-time 5 --output /dev/null --write-out '%{http_code}' https://api.hanasand.com/api/mail/overview || true)"
+api_status="$(curl --silent --show-error --max-time 5 --resolve mail.hanasand.com:443:127.0.0.1 --output /dev/null --write-out '%{http_code}' https://mail.hanasand.com/api/mail/overview || true)"
 if [[ "$api_status" != 401 ]]; then
-    echo "Direct mail API check returned HTTP ${api_status:-no response}; rolling back." >&2
+    echo "Dedicated Mail API route returned HTTP ${api_status:-no response}; rolling back." >&2
     cp -p "$backup" "$config"
     docker exec openresty /usr/local/openresty/bin/openresty -t >/dev/null
     docker exec openresty /usr/local/openresty/bin/openresty -s reload >/dev/null
     docker rm -f "${container}_next" >/dev/null 2>&1 || true
+    compose_api down >/dev/null 2>&1 || true
+    exit 1
+fi
+mail_root="$(curl --fail --silent --show-error --max-time 5 --resolve mail.hanasand.com:443:127.0.0.1 https://mail.hanasand.com/ || true)"
+if ! grep -q 'Sign in to your mailbox' <<<"$mail_root"; then
+    echo 'Standalone mail root did not show its own sign-in page; rolling back.' >&2
+    cp -p "$backup" "$config"
+    docker exec openresty /usr/local/openresty/bin/openresty -t >/dev/null
+    docker exec openresty /usr/local/openresty/bin/openresty -s reload >/dev/null
+    docker rm -f "${container}_next" >/dev/null 2>&1 || true
+    compose_api down >/dev/null 2>&1 || true
+    exit 1
+fi
+identity_status="$(curl --silent --show-error --max-time 5 --resolve mail.hanasand.com:443:127.0.0.1 --output /dev/null --write-out '%{http_code}' https://mail.hanasand.com/api/auth/roles/user/health-check || true)"
+if [[ "$identity_status" != 401 ]]; then
+    echo "Mail host Identity route returned HTTP ${identity_status:-no response}, expected 401 for an unauthenticated role lookup; rolling back." >&2
+    cp -p "$backup" "$config"
+    docker exec openresty /usr/local/openresty/bin/openresty -t >/dev/null
+    docker exec openresty /usr/local/openresty/bin/openresty -s reload >/dev/null
+    docker rm -f "${container}_next" >/dev/null 2>&1 || true
+    compose_api down >/dev/null 2>&1 || true
+    exit 1
+fi
+cors_headers="$(curl --silent --show-error --max-time 5 --resolve mail.hanasand.com:443:127.0.0.1 --dump-header - --output /dev/null --request OPTIONS \
+    -H 'Origin: https://hanasand.com' \
+    -H 'Access-Control-Request-Method: GET' \
+    -H 'Access-Control-Request-Headers: authorization,content-type,dpop,id' \
+    https://mail.hanasand.com/api/mail/overview || true)"
+if ! tr -d '\r' <<<"$cors_headers" | grep -qi '^access-control-allow-origin: https://hanasand.com$'; then
+    echo 'Mail API CORS did not allow the Hanasand dashboard; rolling back.' >&2
+    cp -p "$backup" "$config"
+    docker exec openresty /usr/local/openresty/bin/openresty -t >/dev/null
+    docker exec openresty /usr/local/openresty/bin/openresty -s reload >/dev/null
+    docker rm -f "${container}_next" >/dev/null 2>&1 || true
+    compose_api down >/dev/null 2>&1 || true
     exit 1
 fi
 docker rm -f "$container" >/dev/null 2>&1 || true
 docker rename "${container}_next" "$container"
-printf 'Deployed %s and routed mail.hanasand.com to the standalone Hanasand mail UI.\n' "$revision"
+if [[ "$active_api_port" != 0 ]]; then
+    old_api_project="hanasand-mail-api-${active_api_port}"
+    sleep 5
+    docker compose --project-name "$old_api_project" --env-file "$production_env" -f "$api_compose" down >/dev/null 2>&1 || true
+fi
+finished=true
+config_changed=false
+printf 'Deployed %s: standalone mail UI and dedicated Mail API are live on mail.hanasand.com.\n' "$revision"

@@ -1,58 +1,45 @@
 # Hanasand Mail
 
-Standalone webmail for `mail.hanasand.com`. The Hanasand API owns mailbox data and
-actions; this app does not store mailboxes. The browser calls `api.hanasand.com` directly
-with the signed-in session. The API allows the mail site through its CORS policy, so mail
-requests do not pass through another UI or a mail-specific proxy. OpenResty serves this
-app at `mail.hanasand.com`. The page loads Identity's device-proof client before the
-app and signs authenticated API requests with its browser-held P-256 key.
+Standalone webmail for [mail.hanasand.com](https://mail.hanasand.com). The Hanasand dashboard at [hanasand.com/mail](https://hanasand.com/mail) uses the same UI package. Both browser clients call this repository's dedicated Mail API; mail requests do not pass through the Hanasand frontend or general-purpose API.
 
-## Develop
+## Architecture
 
-Use Bun. The app runs on port 3000 by default:
+- `packages/mail-ui/` contains the shared React workspace, message reader, composer, mailbox controls, and API contract.
+- `src/` contains the standalone Next.js app, sign-in page, and browser Mail API client.
+- `api/` contains the dedicated Fastify Mail API. It validates sessions with Identity, reads the existing PostgreSQL account/mail data, and talks to Stalwart over the private mail network.
+- `mail-server` runs Stalwart and the SMTP relay. It does not host the webmail interface or browser API.
+
+The standalone host serves its own UI at `/`, Identity routes at `/api/auth/*`, and the Mail API at `/api/mail/*`. The dashboard calls `https://mail.hanasand.com/api` directly from the browser. Identity validates the user's session for the dedicated Mail API. Identity and the existing account database remain shared dependencies; mail requests do not depend on the main Hanasand API or frontend.
+
+## Local development
+
+Use Bun. Start the web app and API separately:
 
 ```sh
 bun install
 bun run dev
+cd api && bun install && bun run dev
 ```
 
-Set `NEXT_PUBLIC_MAIL_API_BASE` in `.env.local` to the API you intend to use. It defaults
-to `https://api.hanasand.com/api`. The shared `id`, `access_token`, and `theme` cookies
-are scoped to `.hanasand.com`; local development needs a suitable local authentication
-setup and an API CORS allowlist entry for the local mail origin.
+Set `NEXT_PUBLIC_MAIL_API_BASE` in `.env.local` to the API origin and path you want the browser to call. It defaults to `/api`, which is same-origin in production. The API settings are listed in [`api/.env.example`](api/.env.example); do not use production credentials in local development.
 
-## Check
+## Checks
 
 ```sh
 bun run typecheck
 bun run build
+cd api && bun run typecheck && bun test
+bash api/scripts/test-staging.sh
 ```
 
-Playwright tests run against this app's `/` route. In one terminal, start the mail
-web app on port 3010 with `NEXT_PUBLIC_MAIL_API_BASE` pointed at an isolated test API:
+The staging command starts an isolated PostgreSQL-backed API with synthetic settings,
+checks its health, unauthorized-request handling, and dashboard CORS, then removes the
+temporary staging services and volume. It does not use production database or mail data.
 
-```sh
-PORT=3010 NEXT_PUBLIC_MAIL_API_BASE=http://127.0.0.1:8080/api bun run dev
-```
+The Playwright suite creates accounts and sends mail. Run it only against an isolated test API and mail server, never against production mail data.
 
-In another terminal, run `bun run test`. `PLAYWRIGHT_BASE_URL` defaults to
-`http://127.0.0.1:3010`, and `PLAYWRIGHT_API_BASE` defaults to
-`http://127.0.0.1:8080/api`. The end-to-end suite creates accounts and sends mail, so
-keep the app and test API on isolated test services. Allow `http://127.0.0.1:3010` in
-the test API's CORS configuration. `PLAYWRIGHT_API_BASE` configures only the test
-suite's account setup and cleanup requests.
+## Production
 
-## Sign in
+Push the integration branch to GitHub, update the clean checkout on the mail host, and run `scripts/deploy.sh`. The deployment builds candidate UI and API containers, checks their health and authentication behavior, switches the mail hostname routes, then verifies the public UI and API. The script keeps the previous UI/API route available for rollback.
 
-Production sign-in starts at `https://hanasand.com/dashboard/mail` and returns to the
-mail site after login. Local development does not receive the production domain's
-cookies automatically.
-
-## Deploy
-
-Push `main` to this repository, fast-forward the checkout on the mail host, then run
-`scripts/deploy.sh` from that clean checkout. The script builds and health-checks a
-candidate before switching the `mail.hanasand.com` OpenResty route to it.
-
-The Stalwart server and SMTP relay are deployed separately from the
-[mail-server repository](https://github.com/hanasandcom/mail-server).
+The dedicated Mail API still relies on Identity, PostgreSQL, and Stalwart. Deploy Stalwart and the SMTP relay from the [mail-server repository](https://github.com/hanasandcom/mail-server).

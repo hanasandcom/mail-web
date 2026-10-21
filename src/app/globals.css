@@ -1,4 +1,5 @@
 @import 'tailwindcss';
+@source "../../node_modules/@hanasand/mail-ui/src";
 
 @theme {
   --font-sans: 'Manrope', 'Aptos', sans-serif;
