@@ -255,7 +255,7 @@ if ! grep -q 'Sign in to your mailbox' <<<"$mail_root"; then
     compose_api down >/dev/null 2>&1 || true
     exit 1
 fi
-identity_url=https://mail.hanasand.com:8443/api/auth/roles/user/health-check
+identity_url=https://mail.hanasand.com:8443/api/auth/sessions
 if ! wait_for_mail_status 401 "$identity_url"; then
     identity_status="$(curl_local_mail --silent --show-error --max-time 5 --output /dev/null --write-out '%{http_code}' "$identity_url" || true)"
     echo "Mail host Identity route returned HTTP ${identity_status:-no response}, expected 401 for an unauthenticated role lookup; rolling back." >&2
