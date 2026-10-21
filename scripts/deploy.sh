@@ -81,9 +81,14 @@ PYPORT
 )
 if [[ "$active_port" == 3010 ]]; then port=3011; else port=3010; fi
 if [[ "$active_api_port" == 8085 ]]; then api_port=8086; else api_port=8085; fi
+api_ipv4_address="$(awk -F= -v key="MAIL_API_IPV4_ADDRESS_${api_port}" '$1 == key { sub(/^[^=]*=/, ""); print; exit }' "$production_env")"
+if [[ ! "$api_ipv4_address" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+    echo "Set MAIL_API_IPV4_ADDRESS_${api_port} to an unused address on the mail Docker network." >&2
+    exit 1
+fi
 api_project="hanasand-mail-api-${api_port}"
 compose_api() {
-    MAIL_API_IMAGE="$api_image" MAIL_API_PORT="$api_port" \
+    MAIL_API_IMAGE="$api_image" MAIL_API_PORT="$api_port" MAIL_API_IPV4_ADDRESS="$api_ipv4_address" \
         docker compose --project-name "$api_project" --env-file "$production_env" -f "$api_compose" "$@"
 }
 

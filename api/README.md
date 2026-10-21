@@ -64,6 +64,8 @@ only.
 `Dockerfile` builds the API as a standalone Bun service. `compose.example.yml` binds it
 to localhost for an existing reverse proxy and requires an existing internal Docker
 network. Set `MAIL_API_IPV4_ADDRESS` to an unused, reserved address on that network so
-the API keeps the same source identity when Compose replaces its container. Route the
-public mail API hostname directly to this service; do not route it through the Hanasand
-API or the Mail web app.
+each candidate keeps its source identity when Compose replaces it. Configure one
+address for each API port, `MAIL_API_IPV4_ADDRESS_8085` and
+`MAIL_API_IPV4_ADDRESS_8086`; the deploy script selects the address for its candidate
+port. Route the public mail API hostname directly to this service; do not route it
+through the Hanasand API or the Mail web app.

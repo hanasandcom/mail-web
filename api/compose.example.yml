@@ -42,7 +42,7 @@ services:
       mail-backend:
         # Keep a reserved address so Stalwart's production network policy can
         # recognize this API across candidate and active container replacements.
-        ipv4_address: ${MAIL_API_IPV4_ADDRESS:?Set a reserved Mail API address on the mail network}
+        ipv4_address: ${MAIL_API_IPV4_ADDRESS:?The deploy script must select a reserved Mail API address}
       identity-proxy: {}
 
 networks:
