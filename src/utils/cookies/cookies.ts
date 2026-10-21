@@ -14,14 +14,12 @@ export function setCookie(name: string, value: string, days?: number) {
         expires = `expires=${date.toUTCString()};`
     }
 
-    document.cookie = `${name}=${encodeURIComponent(value)}; ${expires} path=/; SameSite=Lax`
-    removeSharedDomainCookie(name)
+    setCookieValue(name, value, expires)
 }
 
 export function setCookieWithExpiresAt(name: string, value: string, expiresAt?: string | null) {
     const expires = expiresAt ? `expires=${new Date(expiresAt).toUTCString()};` : ''
-    document.cookie = `${name}=${encodeURIComponent(value)}; ${expires} path=/; SameSite=Lax`
-    removeSharedDomainCookie(name)
+    setCookieValue(name, value, expires)
 }
 
 export function removeCookies(...cookies: string[]) {
@@ -42,10 +40,9 @@ function sharedCookieDomain() {
         : ''
 }
 
-function removeSharedDomainCookie(name: string) {
-    if (typeof window === 'undefined') return
-    const hostname = window.location.hostname
-    if (hostname === 'hanasand.com' || hostname.endsWith('.hanasand.com')) {
-        document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=.hanasand.com; SameSite=Lax; Secure`
-    }
+function setCookieValue(name: string, value: string, expires: string) {
+    const secure = window.location.protocol === 'https:' ? '; Secure' : ''
+    const domain = sharedCookieDomain()
+    removeCookie(name)
+    document.cookie = `${name}=${encodeURIComponent(value)}; ${expires} path=/; SameSite=Lax${secure}${domain}`
 }

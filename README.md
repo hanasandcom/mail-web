@@ -1,9 +1,9 @@
 # Hanasand Mail
 
 Standalone webmail for `mail.hanasand.com`. The Hanasand API owns mailbox data and
-actions; this app forwards the signed-in session and does not store mailboxes. In
-production the browser calls the public API directly, while local development defaults
-to the same-origin proxy.
+actions; this app forwards the signed-in session and does not store mailboxes. Browser
+requests use the same-origin `/api/backend` route. OpenResty forwards production mail API
+requests through a loopback-only SSH tunnel to the API host.
 
 ## Develop
 
@@ -14,12 +14,11 @@ bun install
 bun run dev
 ```
 
-Set `HANASAND_API_BASE` in `.env.local` to the API you intend to use. The app defaults
-to `https://api.hanasand.com/api` when the variable is unset, so local mail actions can
-reach the live API. The shared `id`, `access_token`, and `theme` cookies are scoped to
-`.hanasand.com`; local development needs a suitable local authentication setup. Set
-`NEXT_PUBLIC_MAIL_API_BASE` only when you want browser requests to bypass the local
-proxy; production defaults to `https://api.hanasand.com/api`.
+Set `HANASAND_API_BASE` in `.env.local` to the API you intend to use. Local development
+defaults to `https://api.hanasand.com/api` for the same-origin proxy. The shared `id`,
+`access_token`, and `theme` cookies are scoped to `.hanasand.com`; local development
+needs a suitable local authentication setup. Set `NEXT_PUBLIC_MAIL_API_BASE` only when
+you need to override the same-origin proxy.
 
 ## Check
 

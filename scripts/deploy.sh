@@ -7,6 +7,7 @@ config="${HANASAND_MAIL_NGINX_CONFIG:-/home/hanasand/openresty/nginx/conf.d/defa
 container="hanasand_mail_ui"
 candidate="hanasand_mail_ui_candidate"
 image="hanasand-mail-ui:${revision}"
+api_tunnel="http://127.0.0.1:19911/api"
 if [[ ! -f "$config" ]]; then
     echo "OpenResty config not found: $config" >&2
     exit 1
@@ -17,6 +18,10 @@ if [[ "$(git -C "$repo_root" branch --show-current)" != main ]]; then
 fi
 if [[ -n "$(git -C "$repo_root" status --porcelain)" ]]; then
     echo 'The mail app checkout must be clean before deployment.' >&2
+    exit 1
+fi
+if ! curl --fail --silent --show-error --max-time 3 "$api_tunnel/health" | grep -q '"service":"hanasand_api"'; then
+    echo 'The loopback mail API tunnel is unavailable; refusing to deploy.' >&2
     exit 1
 fi
 if ! docker image inspect "$image" >/dev/null 2>&1; then
@@ -79,6 +84,25 @@ proxy = re.compile(r'(?m)^(\s*proxy_pass\s+)http://(?:localhost|127\.0\.0\.1):(?
 updated, count = proxy.subn(lambda m: f'{m.group(1)}http://127.0.0.1:{port}{m.group(2)}', block)
 if count != 1:
     raise SystemExit('Expected exactly one HTTP proxy_pass in the mail server block.')
+api_location = '''    location ^~ /api/backend/mail/ {
+        proxy_pass http://127.0.0.1:19911/api/mail/;
+        proxy_set_header Authorization $http_authorization;
+        proxy_set_header id $http_id;
+        include snippets/proxy-headers.conf;
+        proxy_connect_timeout 3s;
+        proxy_send_timeout 20s;
+        proxy_read_timeout 20s;
+    }
+'''
+api_pattern = re.compile(r'(?ms)^\s*location\s+\^~\s+/api/backend/mail/\s*\{.*?^\s*\}')
+updated, api_count = api_pattern.subn(api_location.rstrip(), updated)
+if api_count > 1:
+    raise SystemExit('Found multiple mail API proxy locations.')
+if api_count == 0:
+    root_location = re.search(r'(?m)^\s*location\s+/\s*\{', updated)
+    if not root_location:
+        raise SystemExit('Could not find the mail web root location.')
+    updated = updated[:root_location.start()] + api_location + updated[root_location.start():]
 path.write_text(text[:matching[0].start()] + updated + text[matching[0].end():])
 PY
 if ! docker exec openresty /usr/local/openresty/bin/openresty -t >/dev/null; then
@@ -97,6 +121,15 @@ for attempt in $(seq 1 20); do
     sleep 1
 done
 if [[ "$mail_route_ready" != true ]]; then
+    cp -p "$backup" "$config"
+    docker exec openresty /usr/local/openresty/bin/openresty -t >/dev/null
+    docker exec openresty /usr/local/openresty/bin/openresty -s reload >/dev/null
+    docker rm -f "${container}_next" >/dev/null 2>&1 || true
+    exit 1
+fi
+api_status="$(curl --silent --show-error --max-time 5 --output /dev/null --write-out '%{http_code}' --resolve mail.hanasand.com:443:127.0.0.1 https://mail.hanasand.com/api/backend/mail/overview || true)"
+if [[ "$api_status" != 401 ]]; then
+    echo "Mail API proxy health check returned HTTP ${api_status:-no response}; rolling back." >&2
     cp -p "$backup" "$config"
     docker exec openresty /usr/local/openresty/bin/openresty -t >/dev/null
     docker exec openresty /usr/local/openresty/bin/openresty -s reload >/dev/null
