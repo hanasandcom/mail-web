@@ -18,6 +18,8 @@ test('mail workspace uses shared dashboard chrome and compact operational geomet
     expect(workspace).toContain('DashboardPage')
     expect(workspace).toContain('data-mail-counts')
     expect(workspace).toContain('mail-compose-button')
+    expect(workspace).toContain('disabled={!overview || overview.actor.canSend === false}')
+    expect(workspace).not.toContain('disabled={!overview || loading || overview.actor.canSend === false}')
     expect(workspace).not.toContain('Mailbox is ready')
     expect(workspace).toContain('Create')
     expect(workspace).toContain('data-mail-filter-strip')
