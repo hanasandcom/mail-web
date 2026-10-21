@@ -1,9 +1,10 @@
 # Hanasand Mail
 
 Standalone webmail for `mail.hanasand.com`. The Hanasand API owns mailbox data and
-actions; this app forwards the signed-in session and does not store mailboxes. Browser
-requests use the same-origin `/api/backend` route. OpenResty forwards production mail API
-requests through a loopback-only SSH tunnel to the API host.
+actions; this app does not store mailboxes. The browser calls `api.hanasand.com` directly
+with the signed-in session. The API allows the mail site through its CORS policy, so mail
+requests do not pass through another UI or a mail-specific proxy. OpenResty serves this
+app at `mail.hanasand.com`.
 
 ## Develop
 
@@ -14,11 +15,10 @@ bun install
 bun run dev
 ```
 
-Set `HANASAND_API_BASE` in `.env.local` to the API you intend to use. Local development
-defaults to `https://api.hanasand.com/api` for the same-origin proxy. The shared `id`,
-`access_token`, and `theme` cookies are scoped to `.hanasand.com`; local development
-needs a suitable local authentication setup. Set `NEXT_PUBLIC_MAIL_API_BASE` only when
-you need to override the same-origin proxy.
+Set `NEXT_PUBLIC_MAIL_API_BASE` in `.env.local` to the API you intend to use. It defaults
+to `https://api.hanasand.com/api`. The shared `id`, `access_token`, and `theme` cookies
+are scoped to `.hanasand.com`; local development needs a suitable local authentication
+setup and an API CORS allowlist entry for the local mail origin.
 
 ## Check
 
@@ -28,17 +28,18 @@ bun run build
 ```
 
 Playwright tests run against this app's `/` route. In one terminal, start the mail
-web app on port 3010 with `HANASAND_API_BASE` pointed at an isolated test API:
+web app on port 3010 with `NEXT_PUBLIC_MAIL_API_BASE` pointed at an isolated test API:
 
 ```sh
-PORT=3010 HANASAND_API_BASE=http://127.0.0.1:8080/api bun run dev
+PORT=3010 NEXT_PUBLIC_MAIL_API_BASE=http://127.0.0.1:8080/api bun run dev
 ```
 
 In another terminal, run `bun run test`. `PLAYWRIGHT_BASE_URL` defaults to
 `http://127.0.0.1:3010`, and `PLAYWRIGHT_API_BASE` defaults to
 `http://127.0.0.1:8080/api`. The end-to-end suite creates accounts and sends mail, so
-keep both the app proxy and test API on isolated test services. Tests default to the
-same-origin proxy unless `NEXT_PUBLIC_MAIL_API_BASE` is set.
+keep the app and test API on isolated test services. Allow `http://127.0.0.1:3010` in
+the test API's CORS configuration. `PLAYWRIGHT_API_BASE` configures only the test
+suite's account setup and cleanup requests.
 
 ## Sign in
 

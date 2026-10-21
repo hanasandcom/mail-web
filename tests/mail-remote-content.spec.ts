@@ -17,7 +17,7 @@ test('HTML mail blocks remote images until the user loads images with a cached s
     page.on('request', request => {
         if (request.url().includes('images.example.test')) imageRequests.push(request.url())
     })
-    await page.route('**/api/backend/mail/overview**', async route => {
+    await page.route('**/api/mail/overview**', async route => {
         const params = new URL(route.request().url()).searchParams
         const message = {
             id: 'remote-mail', subject: 'Remote image example', preview: 'Message with images',
@@ -37,7 +37,7 @@ test('HTML mail blocks remote images until the user loads images with a cached s
             filters: [], recentRecipients: [],
         } })
     })
-    await page.route('**/api/backend/mail/message/remote-mail/reputation**', async route => {
+    await page.route('**/api/mail/message/remote-mail/reputation**', async route => {
         expect(route.request().method()).toBe('GET')
         await route.fulfill({ json: {
             messageId: 'remote-mail',
@@ -84,7 +84,7 @@ test('unknown and unavailable reputation never offers remote-image loading', asy
         { name: 'access_token', value: 'local-dashboard-render-proof-token', url: baseURL! },
     ])
     const idFor = (url: string) => createHash('sha256').update(url).digest('hex')
-    await page.route('**/api/backend/mail/overview**', async route => {
+    await page.route('**/api/mail/overview**', async route => {
         const params = new URL(route.request().url()).searchParams
         const message = { id: 'unknown-mail', subject: 'Unknown remote image', preview: 'Message', receivedAt: '2026-10-20T10:00:00Z', from: [], to: [], cc: [], mailboxIds: ['inbox'], hasAttachment: false, isRead: false, isFlagged: false, isAnswered: false, isDraft: false, isJunk: false, isDeleted: false }
         await route.fulfill({ json: {
@@ -95,7 +95,7 @@ test('unknown and unavailable reputation never offers remote-image loading', asy
             filters: [], recentRecipients: [],
         } })
     })
-    await page.route('**/api/backend/mail/message/unknown-mail/reputation**', route => route.fulfill({ json: {
+    await page.route('**/api/mail/message/unknown-mail/reputation**', route => route.fulfill({ json: {
         messageId: 'unknown-mail', remoteUrls: [
             { id: idFor('https://unknown.example.test/pixel.png'), url: 'https://unknown.example.test/pixel.png', reputation: { provider: 'virustotal', status: 'unknown' } },
             { id: idFor('https://unavailable.example.test/pixel.png'), url: 'https://unavailable.example.test/pixel.png', reputation: { provider: 'virustotal', status: 'unavailable' } },

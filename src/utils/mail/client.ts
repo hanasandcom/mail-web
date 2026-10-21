@@ -3,7 +3,7 @@
 import { getCookie, setCookieWithExpiresAt } from '@/utils/cookies/cookies'
 import type { MailAttachmentReputation, MailOverview, MailRemoteUrl } from './types'
 
-const MAIL_API_BASE = (process.env.NEXT_PUBLIC_MAIL_API_BASE || '/api/backend').replace(/\/+$/, '')
+const MAIL_API_BASE = (process.env.NEXT_PUBLIC_MAIL_API_BASE || 'https://api.hanasand.com/api').replace(/\/+$/, '')
 
 function mailApiUrl(path: string) {
     return `${MAIL_API_BASE}${path}`

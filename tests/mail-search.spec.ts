@@ -13,7 +13,7 @@ test('mailbox search calls the API and refreshes results after an archive action
         from: [{ email: 'billing@acme.example' }], to: [{ email: 'user@example.test' }], cc: [], mailboxIds: ['inbox'],
         hasAttachment: false, isRead: false, isFlagged: false, isAnswered: false, isDraft: false, isJunk: false, isDeleted: false,
     }]
-    await page.route('**/api/backend/mail/overview**', async route => {
+    await page.route('**/api/mail/overview**', async route => {
         const params = new URL(route.request().url()).searchParams
         const result = messages()
         await route.fulfill({ json: {
@@ -30,12 +30,12 @@ test('mailbox search calls the API and refreshes results after an archive action
         } })
     })
     const searchQueries: string[] = []
-    await page.route('**/api/backend/mail/search**', async route => {
+    await page.route('**/api/mail/search**', async route => {
         const url = new URL(route.request().url())
         searchQueries.push(url.searchParams.get('query') || '')
         await route.fulfill({ json: { messages: messages(), nextCursor: null } })
     })
-    await page.route('**/api/backend/mail/message/*/action', async route => {
+    await page.route('**/api/mail/message/*/action', async route => {
         archived = true
         await route.fulfill({ json: { ok: true } })
     })

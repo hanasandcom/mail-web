@@ -23,7 +23,7 @@ test('shared folders keep mailbox selections separate and respect sending permis
     let releaseMessage: (() => void) | undefined
     let holdMessage = false
     let releaseSupport: (() => void) | undefined
-    await page.route('**/api/backend/mail/overview?**', async route => {
+    await page.route('**/api/mail/overview?**', async route => {
         const url = new URL(route.request().url()); requests.push(url)
         const user = url.searchParams.get('mailboxUser') || 'mail-test'
         const shared = user.startsWith('shared:')

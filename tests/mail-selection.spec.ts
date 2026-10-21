@@ -11,7 +11,7 @@ test('select mail without opening it, archive a group, and retain failures for r
     const archived = new Set<string>()
     let fail = true
     const requests: { id: string, mailboxUser: string, action: string }[] = []
-    await page.route('**/api/backend/mail/overview**', route => {
+    await page.route('**/api/mail/overview**', route => {
         const mailbox = new URL(route.request().url()).searchParams.get('mailboxId') || 'inbox'
         return route.fulfill({ json: {
             actor: { id: 'dashboard-render-proof-user', canSend: true }, mailboxUser: 'dashboard-render-proof-user', mailboxAddress: 'test@example.com', accessibleAccounts: [],
@@ -19,7 +19,7 @@ test('select mail without opening it, archive a group, and retain failures for r
             messages: messages.filter(message => mailbox === 'archive' ? archived.has(message.id) : !archived.has(message.id)), nextCursor: null, selectedMessage: null,
         } })
     })
-    await page.route('**/api/backend/mail/message/*/action', route => {
+    await page.route('**/api/mail/message/*/action', route => {
         const id = new URL(route.request().url()).pathname.split('/').at(-2)!
         requests.push({ id, ...route.request().postDataJSON() })
         if (id === 'Two' && fail) return route.fulfill({ status: 503, json: { error: 'Temporarily unavailable' } })

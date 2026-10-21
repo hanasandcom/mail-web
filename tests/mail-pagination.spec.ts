@@ -9,7 +9,7 @@ test('mail scroll loads older messages, retries failures and contains long mailb
     ])
     let failNext = true
     let archived = false
-    await page.route('**/api/backend/mail/overview**', async route => {
+    await page.route('**/api/mail/overview**', async route => {
         const params = new URL(route.request().url()).searchParams
         const after = params.get('after')
         const support = params.get('mailboxUser') === 'shared:support'
@@ -51,7 +51,7 @@ test('mail scroll loads older messages, retries failures and contains long mailb
     await expect(page.getByTestId('mail-compose-form')).toContainText('Create message')
     await page.getByRole('button', { name: 'Close', exact: true }).click()
     let actedOn: unknown
-    await page.route('**/api/backend/mail/message/*/action', async route => {
+    await page.route('**/api/mail/message/*/action', async route => {
         actedOn = { url: route.request().url(), ...route.request().postDataJSON() }
         archived = true
         await route.fulfill({ json: { ok: true } })

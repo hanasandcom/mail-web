@@ -9,7 +9,7 @@ test('opening persists read state and old archived mail never shows unread dots'
     ])
     let read = false
     let reads = 0
-    await page.route('**/api/backend/mail/overview**', route => {
+    await page.route('**/api/mail/overview**', route => {
         const query = new URL(route.request().url()).searchParams
         const mailbox = query.get('mailboxId') || 'inbox'
         const message = { id: 'message', subject: 'Example', from: [{ email: 'sender@example.com' }], to: [], cc: [], attachments: [], textBody: 'Hello', mailboxIds: [mailbox], receivedAt: '2026-09-19T10:00:00Z', isRead: mailbox === 'archive' ? false : read }
@@ -19,7 +19,7 @@ test('opening persists read state and old archived mail never shows unread dots'
             messages: [message], selectedMessage: query.get('messageId') ? message : null, nextCursor: null,
         } })
     })
-    await page.route('**/api/backend/mail/message/message/action', route => {
+    await page.route('**/api/mail/message/message/action', route => {
         expect(route.request().postDataJSON()).toEqual({ mailboxUser: 'dashboard-render-proof-user', action: 'read' })
         read = true
         reads++

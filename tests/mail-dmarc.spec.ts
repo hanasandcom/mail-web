@@ -12,18 +12,18 @@ test('DMARC attachments render inline with safe failures and retries', async ({ 
     ])
     const message = { id: 'report', subject: 'Report domain: hanasand.com', from: [{ email: 'noreply-dmarc-support@google.com' }], to: [{ email: 'postmaster@hanasand.com' }], cc: [], bcc: [], replyTo: [], receivedAt: '2026-09-19T10:00:00Z', mailboxIds: ['inbox'], preview: '', isRead: true,
         attachments: [{ blobId: 'zip', name: 'google-report.zip', size: 789, type: 'application/zip' }], textBody: '', htmlBody: '' }
-    await page.route('**/api/backend/mail/overview**', route => route.fulfill({ json: {
+    await page.route('**/api/mail/overview**', route => route.fulfill({ json: {
         actor: { id: 'dashboard-render-proof-user' }, mailboxUser: 'dashboard-render-proof-user', mailboxAddress: 'postmaster@hanasand.com', accessibleAccounts: [],
         mailboxes: [{ id: 'inbox', name: 'Inbox', role: 'inbox', totalEmails: 1 }], selectedMailboxId: 'inbox', messages: [message], nextCursor: null,
         selectedMessage: new URL(route.request().url()).searchParams.get('messageId') ? message : null,
     } }))
     let body = zipSync({ 'report.xml': strToU8(xml) })
     let requests = 0
-    await page.route('**/api/backend/mail/blob/**', route => {
+    await page.route('**/api/mail/blob/**', route => {
         requests++
         return route.fulfill({ body: Buffer.from(body), contentType: 'application/zip' })
     })
-    await page.route('**/api/backend/mail/message/*/action', route => route.fulfill({ json: { ok: true } }))
+    await page.route('**/api/mail/message/*/action', route => route.fulfill({ json: { ok: true } }))
     await page.goto('/')
     await page.getByTestId('mail-message-report').click()
     const report = page.getByRole('region', { name: 'DMARC report google-report.zip' })

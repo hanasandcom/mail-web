@@ -9,7 +9,7 @@ test('keeps the mail surface themed and shows mailbox skeletons until the API re
     ])
 
     let finishOverview: (() => Promise<void>) | undefined
-    await page.route('**/api/backend/mail/overview**', route => new Promise<void>(resolve => {
+    await page.route('**/api/mail/overview**', route => new Promise<void>(resolve => {
         finishOverview = async () => {
             await route.fulfill({ json: {
                 actor: { id: 'dashboard-render-proof-user' }, mailboxUser: 'dashboard-render-proof-user', mailboxAddress: 'test@example.com',
@@ -39,7 +39,7 @@ test('shows a useful reconnect message for a closed mail-server connection', asy
         { name: 'id', value: 'dashboard-render-proof-user', url: baseURL! },
         { name: 'access_token', value: 'local-dashboard-render-proof-token', url: baseURL! },
     ])
-    await page.route('**/api/backend/mail/overview**', route => route.fulfill({
+    await page.route('**/api/mail/overview**', route => route.fulfill({
         status: 500,
         json: { error: 'The socket connection was closed unexpectedly. For more information, pass `verbose: true` in the second argument to fetch()' },
     }))
