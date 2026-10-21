@@ -1,16 +1,16 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { mailBlobUrl } from '@/utils/mail/client'
+import { fetchMailBlob } from '@/utils/mail/client'
 import { extractReportXml, parseDmarcReport, readReportResponse, MAX_ARCHIVE_BYTES, type DmarcReport } from '@/utils/mail/dmarc'
-import type { MailAttachment, MailMessage } from '@/utils/mail/types'
+import type { MailAttachment, MailMessage, MailReputation } from '@/utils/mail/types'
 
 export function reportAttachments(message: MailMessage) {
     const isReport = /dmarc|report domain:/i.test(message.subject) || message.from.some(address => /dmarc/i.test(address.email))
     return isReport ? message.attachments.filter(attachment => /\.(?:zip|gz|xml)$/i.test(attachment.name)) : []
 }
 
-export default function DmarcReportPreview({ attachment, mailboxUser }: { attachment: MailAttachment, mailboxUser: string }) {
+export default function DmarcReportPreview({ attachment, mailboxUser, reputation, checking }: { attachment: MailAttachment, mailboxUser: string, reputation?: MailReputation, checking: boolean }) {
     const [reports, setReports] = useState<DmarcReport[]>([])
     const [error, setError] = useState('')
     const [attempt, setAttempt] = useState(0)
@@ -22,8 +22,13 @@ export default function DmarcReportPreview({ attachment, mailboxUser }: { attach
             setError('This report is too large to preview. Download the attachment to read it.')
             return
         }
+        const safeToRead = !checking && reputation && reputation.status !== 'unavailable' && (reputation.status === 'unknown' || (reputation.flagged ?? 0) === 0)
+        if (!safeToRead) {
+            setError(checking ? 'Checking VirusTotal before loading this report.' : 'VirusTotal could not confirm this report is clear, so it remains blocked.')
+            return
+        }
         const timer = setTimeout(() => controller.abort(), 20_000)
-        void fetch(mailBlobUrl(mailboxUser, attachment.blobId, attachment.name), { signal: controller.signal, cache: 'no-store' })
+        void fetchMailBlob(mailboxUser, attachment.blobId, attachment.name, controller.signal)
             .then(readReportResponse)
             .then(data => extractReportXml(data).map(parseDmarcReport))
             .then(result => { if (!controller.signal.aborted) setReports(result) })
@@ -33,7 +38,7 @@ export default function DmarcReportPreview({ attachment, mailboxUser }: { attach
             })
             .finally(() => clearTimeout(timer))
         return () => { clearTimeout(timer); controller.abort('Message closed') }
-    }, [mailboxUser, attachment.blobId, attachment.name, attachment.size, attempt])
+    }, [mailboxUser, attachment.blobId, attachment.name, attachment.size, attempt, reputation, checking])
     return <section aria-label={`DMARC report ${attachment.name}`} className='min-w-0 rounded-lg border border-ui-border p-4 text-sm text-ui-text'>
         {error ? <p role='status' className='text-ui-muted'>{error} <button type='button' className='text-ui-primary underline' onClick={() => setAttempt(value => value + 1)}>Retry</button></p>
             : !reports.length ? <p role='status' className='text-ui-muted'>Reading report…</p>

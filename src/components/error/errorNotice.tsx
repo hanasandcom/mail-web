@@ -15,9 +15,8 @@ type ErrorNoticeProps = {
 const variants = {
     error: {
         icon: AlertCircle,
-        accent: 'bg-ui-danger',
-        iconTone: 'text-ui-text',
-        shell: 'border-ui-danger bg-ui-panel text-ui-text',
+        iconTone: 'text-ui-muted',
+        shell: 'border-ui-border bg-ui-panel text-ui-text',
         title: 'text-ui-text',
         body: 'text-ui-text',
         button: 'border-ui-danger bg-ui-raised text-ui-text hover:bg-ui-panel',
@@ -25,7 +24,6 @@ const variants = {
     },
     info: {
         icon: Info,
-        accent: 'bg-ui-primary',
         iconTone: 'text-ui-primary',
         shell: 'border-ui-primary bg-ui-panel text-ui-text',
         title: 'text-ui-primary',
@@ -35,7 +33,6 @@ const variants = {
     },
     success: {
         icon: CheckCircle2,
-        accent: 'bg-ui-success',
         iconTone: 'text-ui-success',
         shell: 'border-ui-success bg-ui-panel text-ui-success',
         title: 'text-ui-success',
@@ -64,8 +61,7 @@ export default function ErrorNotice({
     const Icon = tone.icon
 
     return (
-        <div className={`relative overflow-hidden rounded-lg border shadow-sm ${tone.shell} ${compact ? 'px-3 py-2' : 'px-3.5 py-3'} ${className}`}>
-            <div className={`absolute inset-y-2 left-0 w-0.5 rounded-r ${tone.accent}`} />
+        <div className={`rounded-lg border shadow-sm ${tone.shell} ${compact ? 'px-3 py-2' : 'px-3.5 py-3'} ${className}`}>
             <div className='flex min-w-0 items-start gap-2.5'>
                 <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${tone.iconTone}`} />
                 <div className='min-w-0 flex-1'>

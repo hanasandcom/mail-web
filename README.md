@@ -1,8 +1,9 @@
 # Hanasand Mail
 
-Standalone webmail for `mail.hanasand.com`. This repository contains the browser UI and
-its same-origin API proxy. The Hanasand API owns mailbox data and actions; this app
-forwards the signed-in session and does not store mailboxes.
+Standalone webmail for `mail.hanasand.com`. The Hanasand API owns mailbox data and
+actions; this app forwards the signed-in session and does not store mailboxes. In
+production the browser calls the public API directly, while local development defaults
+to the same-origin proxy.
 
 ## Develop
 
@@ -16,7 +17,9 @@ bun run dev
 Set `HANASAND_API_BASE` in `.env.local` to the API you intend to use. The app defaults
 to `https://api.hanasand.com/api` when the variable is unset, so local mail actions can
 reach the live API. The shared `id`, `access_token`, and `theme` cookies are scoped to
-`.hanasand.com`; local development needs a suitable local authentication setup.
+`.hanasand.com`; local development needs a suitable local authentication setup. Set
+`NEXT_PUBLIC_MAIL_API_BASE` only when you want browser requests to bypass the local
+proxy; production defaults to `https://api.hanasand.com/api`.
 
 ## Check
 
@@ -35,7 +38,8 @@ PORT=3010 HANASAND_API_BASE=http://127.0.0.1:8080/api bun run dev
 In another terminal, run `bun run test`. `PLAYWRIGHT_BASE_URL` defaults to
 `http://127.0.0.1:3010`, and `PLAYWRIGHT_API_BASE` defaults to
 `http://127.0.0.1:8080/api`. The end-to-end suite creates accounts and sends mail, so
-keep both the app proxy and test API on isolated test services.
+keep both the app proxy and test API on isolated test services. Tests default to the
+same-origin proxy unless `NEXT_PUBLIC_MAIL_API_BASE` is set.
 
 ## Sign in
 

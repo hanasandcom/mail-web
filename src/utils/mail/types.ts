@@ -41,6 +41,28 @@ export type MailMessage = MailMessageSummary & {
     htmlBody: string
 }
 
+export type MailRemoteUrl = {
+    id: string
+    url: string
+    reputation: MailReputation
+}
+
+export type MailReputation = {
+    provider: 'virustotal'
+    status: 'known' | 'unknown' | 'unavailable'
+    flagged?: number
+    total?: number
+    checkedAt?: string
+    reportUrl?: string
+}
+
+export type MailAttachmentReputation = {
+    blobId: string
+    name: string
+    size: number
+    reputation: MailReputation
+}
+
 export type MailboxItem = {
     id: string
     name: string

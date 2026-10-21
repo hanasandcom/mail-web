@@ -25,6 +25,8 @@ import {
     createFilter,
     createMailbox,
     deleteFilter,
+    fetchMailBlob,
+    fetchMailRemoteContent,
     fetchMailOverview,
     messageAction,
     searchMail,
@@ -44,8 +46,12 @@ import {
     formatDate,
     formatMailboxAddress,
     formatRelativeTime,
+    htmlWithApprovedRemoteImages,
     iconButton,
     iconForMailbox,
+    isInlineAttachmentType,
+    normalizeRemoteImageUrl,
+    remoteImageUrlsFromHtml,
     runAction,
     subtleInput,
     toolbarButton,
@@ -91,6 +97,7 @@ export default function MailWorkspace({ mailboxUser }: Props) {
     }, [readingMessage])
     const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null)
     const [composer, setComposer] = useState<ComposerState>(emptyComposer)
+    const sendIdempotencyKey = useRef<string | null>(null)
     const [creatingMailbox, setCreatingMailbox] = useState(false)
     const [mailboxModalOpen, setMailboxModalOpen] = useState(false)
     const [mailboxDraft, setMailboxDraft] = useState('')
@@ -119,6 +126,10 @@ export default function MailWorkspace({ mailboxUser }: Props) {
     const [checkedMessages, setCheckedMessages] = useState<Set<string>>(new Set())
     const [archiving, setArchiving] = useState(false)
     const archivingRef = useRef(false)
+    const openComposer = (state: ComposerState) => {
+        sendIdempotencyKey.current = null
+        setComposer(state)
+    }
     const [mailFilter, setMailFilter] = useState<MailListFilter>('all')
     const normalizedQuery = query.trim()
     const currentMailboxSearch = mailboxSearch?.query === normalizedQuery
@@ -263,7 +274,7 @@ export default function MailWorkspace({ mailboxUser }: Props) {
                 const detail = await fetchMailOverview({ mailboxUser: overview.mailboxUser, mailboxId: overview.selectedMailboxId, messageId: message.id })
                 if (version !== requestVersion.current) return
                 if (!detail.selectedMessage) throw new Error('This message is no longer available.')
-                setComposer(composeFromReply(action, detail.selectedMessage, overview.mailboxAddress))
+                openComposer(composeFromReply(action, detail.selectedMessage, overview.mailboxAddress))
             } catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to open message.') }
         } else {
             await performAction(message.id, action)
@@ -394,9 +405,79 @@ export default function MailWorkspace({ mailboxUser }: Props) {
 
     const selectedMessage = overview?.selectedMessage?.id === selectedMessageId ? overview.selectedMessage : null
 
+    const [remoteContent, setRemoteContent] = useState<{ messageId: string, urls: Awaited<ReturnType<typeof fetchMailRemoteContent>> } | null>(null)
+    const [remoteContentPending, setRemoteContentPending] = useState(false)
+    const [remoteContentError, setRemoteContentError] = useState('')
+    const [remoteHtmlOverride, setRemoteHtmlOverride] = useState<{ messageId: string, html: string } | null>(null)
+    const currentRemoteUrls = remoteContent && remoteContent.messageId === selectedMessage?.id ? remoteContent.urls.remoteUrls : []
+    const currentAttachmentReputations = useMemo(() => remoteContent && remoteContent.messageId === selectedMessage?.id
+        ? new Map(remoteContent.urls.attachments.map(item => [item.blobId, item.reputation]))
+        : new Map(), [remoteContent, selectedMessage?.id])
+    const currentRemoteHtml = remoteHtmlOverride && remoteHtmlOverride.messageId === selectedMessage?.id ? remoteHtmlOverride.html : null
+    const safeInlineAttachments = useMemo(() => selectedMessage?.attachments.filter(attachment => {
+        const reputation = currentAttachmentReputations.get(attachment.blobId)
+        return Boolean(attachment.cid && isInlineAttachmentType(attachment.type) && reputation?.status === 'known' && reputation.flagged === 0)
+    }) || [], [selectedMessage, currentAttachmentReputations])
+    const [inlineAttachmentUrls, setInlineAttachmentUrls] = useState<{ messageId: string, urls: Record<string, string> } | null>(null)
+    const currentInlineAttachmentUrls = inlineAttachmentUrls && inlineAttachmentUrls.messageId === selectedMessage?.id ? inlineAttachmentUrls.urls : {}
+
+    useEffect(() => {
+        let active = true
+        setRemoteContent(null)
+        setRemoteContentError('')
+        setRemoteHtmlOverride(null)
+        if ((!selectedMessage?.htmlBody && !selectedMessage?.attachments.length) || !overview?.mailboxUser) {
+            setRemoteContentPending(false)
+            return () => { active = false }
+        }
+
+        setRemoteContentPending(true)
+        void fetchMailRemoteContent({ mailboxUser: overview.mailboxUser, messageId: selectedMessage.id })
+            .then(result => {
+                if (!active) return
+                const imageUrls = remoteImageUrlsFromHtml(withInlineAttachments(selectedMessage, overview.mailboxUser))
+                setRemoteContent({ messageId: selectedMessage.id, urls: { ...result, remoteUrls: result.remoteUrls.filter(item => imageUrls.has(item.url)) } })
+            })
+            .catch(() => { if (active) setRemoteContentError('Remote image safety status is unavailable. Images remain blocked.') })
+            .finally(() => { if (active) setRemoteContentPending(false) })
+        return () => { active = false }
+    }, [selectedMessage?.id, selectedMessage?.htmlBody, selectedMessage?.attachments.length, overview?.mailboxUser])
+
+    useEffect(() => {
+        let active = true
+        const controller = new AbortController()
+        const messageId = selectedMessage?.id || ''
+        setInlineAttachmentUrls({ messageId, urls: {} })
+        if (!selectedMessage || !overview?.mailboxUser || !safeInlineAttachments.length) {
+            return () => { active = false; controller.abort() }
+        }
+
+        const objectUrls: string[] = []
+        void Promise.all(safeInlineAttachments.map(async attachment => {
+            const response = await fetchMailBlob(overview.mailboxUser, attachment.blobId, attachment.name, controller.signal)
+            const objectUrl = URL.createObjectURL(await response.blob())
+            objectUrls.push(objectUrl)
+            return [attachment.blobId, objectUrl] as const
+        })).then(entries => {
+            if (active) setInlineAttachmentUrls({ messageId, urls: Object.fromEntries(entries) })
+        }).catch(() => {})
+
+        return () => {
+            active = false
+            controller.abort()
+            objectUrls.forEach(URL.revokeObjectURL)
+        }
+    }, [selectedMessage?.id, overview?.mailboxUser, safeInlineAttachments])
+
+    const safeRemoteImageUrls = useMemo(() => Array.from(new Set(currentRemoteUrls.flatMap(item => {
+        if (item.reputation.provider !== 'virustotal' || item.reputation.status !== 'known' || item.reputation.flagged !== 0) return []
+        const normalized = normalizeRemoteImageUrl(item.url)
+        return normalized && normalized === item.url ? [normalized] : []
+    }))), [currentRemoteUrls])
+
     const renderedHtml = useMemo(
-        () => selectedMessage ? buildMailFrameHtml(withInlineAttachments(selectedMessage, overview?.mailboxUser || ''), mailTheme) : '',
-        [selectedMessage, overview?.mailboxUser, mailTheme]
+        () => selectedMessage ? buildMailFrameHtml(currentRemoteHtml ?? withInlineAttachments(selectedMessage, overview?.mailboxUser || '', currentInlineAttachmentUrls), mailTheme, currentRemoteHtml ? safeRemoteImageUrls : []) : '',
+        [selectedMessage, overview?.mailboxUser, mailTheme, currentRemoteHtml, safeRemoteImageUrls, currentInlineAttachmentUrls]
     )
 
     const unreadCount = overview?.accessibleAccounts.find(account => account.id === overview.actor.id)?.unreadCount ?? 0
@@ -447,7 +528,7 @@ export default function MailWorkspace({ mailboxUser }: Props) {
                             data-testid='mail-compose-button'
                             disabled={!overview || loading || overview.actor.canSend === false}
                             className='inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md bg-ui-primary px-3 text-xs font-semibold text-ui-on-primary shadow-sm transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45'
-                            onClick={() => setComposer({ ...emptyComposer, open: true })}
+                            onClick={() => openComposer({ ...emptyComposer, open: true })}
                         >
                             <MailPlus className='h-3.5 w-3.5' />
                             Create
@@ -668,9 +749,9 @@ export default function MailWorkspace({ mailboxUser }: Props) {
                                 </div>
 
                                 <div className='flex flex-wrap items-center gap-1.5'>
-                                    <ActionIconButton label='Reply' disabled={loading || overview?.actor.canSend === false} icon={<Reply className='h-3.5 w-3.5' />} onClick={() => setComposer(composeFromReply('reply', selectedMessage))} />
-                                    <ActionIconButton label='Reply all' disabled={loading || overview?.actor.canSend === false} icon={<CornerUpLeft className='h-3.5 w-3.5' />} onClick={() => setComposer(composeFromReply('replyAll', selectedMessage, overview.mailboxAddress))} />
-                                    <ActionIconButton label='Forward' disabled={loading || overview?.actor.canSend === false} icon={<Forward className='h-3.5 w-3.5' />} onClick={() => setComposer(composeFromReply('forward', selectedMessage))} />
+                                    <ActionIconButton label='Reply' disabled={loading || overview?.actor.canSend === false} icon={<Reply className='h-3.5 w-3.5' />} onClick={() => openComposer(composeFromReply('reply', selectedMessage))} />
+                                    <ActionIconButton label='Reply all' disabled={loading || overview?.actor.canSend === false} icon={<CornerUpLeft className='h-3.5 w-3.5' />} onClick={() => openComposer(composeFromReply('replyAll', selectedMessage, overview.mailboxAddress))} />
+                                    <ActionIconButton label='Forward' disabled={loading || overview?.actor.canSend === false} icon={<Forward className='h-3.5 w-3.5' />} onClick={() => openComposer(composeFromReply('forward', selectedMessage))} />
                                     <ActionIconButton label={selectedMessage.isFlagged ? 'Unstar' : 'Star'} icon={<Star className='h-3.5 w-3.5' />} onClick={() => void performAction(selectedMessage.id, selectedMessage.isFlagged ? 'unflag' : 'flag')} />
                                     <ActionIconButton label='Archive' icon={<Archive className='h-3.5 w-3.5' />} onClick={() => void performAction(selectedMessage.id, 'archive')} />
                                     <ActionIconButton
@@ -687,15 +768,47 @@ export default function MailWorkspace({ mailboxUser }: Props) {
                                     <div className='mb-2 text-[11px] font-medium tracking-normal text-ui-muted'>Attachments</div>
                                     <div className='grid gap-2 lg:grid-cols-2'>
                                         {selectedMessage.attachments.map(attachment => (
-                                            <AttachmentPreview key={attachment.blobId} attachment={attachment} mailboxUser={overview.mailboxUser} />
+                                            <div key={attachment.blobId}>
+                                                <AttachmentPreview
+                                                    attachment={attachment}
+                                                    mailboxUser={overview.mailboxUser}
+                                                    reputation={currentAttachmentReputations.get(attachment.blobId)}
+                                                    checking={remoteContentPending}
+                                                />
+                                                <p className='mt-1 flex flex-wrap items-center gap-1 px-1 text-[10px] text-ui-muted' role='status'>
+                                                    {remoteContentPending ? 'Checking VirusTotal by file hash…' : remoteContentError ? 'VirusTotal status unavailable.' : (() => {
+                                                        const reputation = currentAttachmentReputations.get(attachment.blobId)
+                                                        if (!reputation || reputation.status === 'unavailable') return 'VirusTotal status unavailable.'
+                                                        if (reputation.status === 'unknown') return 'No VirusTotal report for this file hash.'
+                                                        return <>
+                                                            <span className={reputation.flagged ? 'text-ui-danger' : ''}>{reputation.flagged ? `Potential threat: ${reputation.flagged} / ${reputation.total ?? '?'} scanners flagged` : `VirusTotal: 0 / ${reputation.total ?? '?'} scanners flagged`}</span>
+                                                            {reputation.reportUrl && <a href={reputation.reportUrl} target='_blank' rel='noopener noreferrer' className='underline'>Report</a>}
+                                                        </>
+                                                    })()}
+                                                </p>
+                                            </div>
                                         ))}
                                     </div>
                                 </div>
                             )}
 
-                            {reportAttachments(selectedMessage).map(attachment => <DmarcReportPreview key={`${overview.mailboxUser}:${selectedMessage.id}:${attachment.blobId}`} attachment={attachment} mailboxUser={overview.mailboxUser} />)}
+                            {reportAttachments(selectedMessage).map(attachment => <DmarcReportPreview key={`${overview.mailboxUser}:${selectedMessage.id}:${attachment.blobId}`} attachment={attachment} mailboxUser={overview.mailboxUser} reputation={currentAttachmentReputations.get(attachment.blobId)} checking={remoteContentPending} />)}
 
                             {selectedMessage.htmlBody ? (
+                                <>
+                                {(remoteContentPending || remoteContentError || currentRemoteUrls.length > 0) && <div className='flex flex-wrap items-center gap-2 rounded-lg border border-ui-border bg-ui-raised px-3 py-2 text-[11px] text-ui-muted'>
+                                    {remoteContentPending ? <span role='status'>Checking remote image safety…</span> : remoteContentError ? <span role='status'>{remoteContentError}</span> : <>
+                                        <span>{currentRemoteHtml ? 'Safe remote images are loaded.' : `Remote images are blocked by default. ${safeRemoteImageUrls.length} safe image${safeRemoteImageUrls.length === 1 ? '' : 's'} available.`}</span>
+                                        {safeRemoteImageUrls.length > 0 && <button type='button' className='rounded-md border border-ui-border px-2 py-1 text-ui-text hover:bg-ui-panel' onClick={() => {
+                                            if (currentRemoteHtml) {
+                                                setRemoteHtmlOverride(null)
+                                                return
+                                            }
+                                            setRemoteHtmlOverride({ messageId: selectedMessage.id, html: htmlWithApprovedRemoteImages(withInlineAttachments(selectedMessage, overview?.mailboxUser || '', currentInlineAttachmentUrls), safeRemoteImageUrls) })
+                                        }}>{currentRemoteHtml ? 'Hide remote images' : 'Load safe remote images'}</button>}
+                                        {!currentRemoteHtml && safeRemoteImageUrls.length > 0 && <span>Loading requests these images from their external hosts and may reveal your IP address.</span>}
+                                    </>}
+                                </div>}
                                 <iframe
                                     title='HTML mail'
                                     style={{ colorScheme: mailTheme, background: 'transparent' }}
@@ -703,6 +816,7 @@ export default function MailWorkspace({ mailboxUser }: Props) {
                                     sandbox='allow-popups allow-popups-to-escape-sandbox'
                                     srcDoc={renderedHtml}
                                 />
+                                </>
                             ) : selectedMessage.textBody ? (
                                 <article className='min-w-0 wrap-anywhere rounded-lg border border-ui-border px-4 py-3 @3xl:min-h-40 @3xl:flex-1 @3xl:overflow-y-auto text-xs leading-5 whitespace-pre-wrap text-ui-text'>
                                     {selectedMessage.textBody}
@@ -720,9 +834,10 @@ export default function MailWorkspace({ mailboxUser }: Props) {
                     mailboxAddress={overview.mailboxAddress}
                     recentRecipients={overview.recentRecipients}
                     onChange={setComposer}
-                    onClose={() => setComposer(emptyComposer)}
+                    onClose={() => { sendIdempotencyKey.current = null; setComposer(emptyComposer) }}
                     onSubmit={async next => {
                         try {
+                            sendIdempotencyKey.current ||= crypto.randomUUID()
                             const sendResult = await sendMail({
                                 mailboxUser: overview.mailboxUser,
                                 to: next.to,
@@ -731,7 +846,8 @@ export default function MailWorkspace({ mailboxUser }: Props) {
                                 subject: next.subject,
                                 textBody: next.body,
                                 attachments: next.attachments,
-                            })
+                            }, sendIdempotencyKey.current)
+                            sendIdempotencyKey.current = null
                             setComposer(emptyComposer)
                             await load({
                                 silent: true,

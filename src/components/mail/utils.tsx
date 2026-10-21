@@ -1,6 +1,6 @@
 'use client'
 
-import type { ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import {
     Archive,
     Inbox,
@@ -9,7 +9,7 @@ import {
     ShieldAlert,
 } from 'lucide-react'
 import {
-    mailBlobUrl,
+    fetchMailBlob,
     messageAction,
     type DraftAttachment,
 } from '@/utils/mail/client'
@@ -18,6 +18,7 @@ import type {
     MailAttachment,
     MailMessage,
     MailOverview,
+    MailReputation,
 } from '@/utils/mail/types'
 import Image from 'next/image'
 
@@ -161,11 +162,23 @@ export function prettyBytes(size: number) {
     return `${(size / (1024 * 1024)).toFixed(1)} MB`
 }
 
-export function buildMailFrameHtml(html: string, theme: 'light' | 'dark' = 'light') {
+export function buildMailFrameHtml(html: string, theme: 'light' | 'dark' = 'light', remoteImageUrls: string[] = []) {
+    const remoteImageSources = remoteImageUrls.flatMap(value => {
+        try {
+            const url = new URL(value)
+            if (!['http:', 'https:'].includes(url.protocol)) return []
+            return [`${url.origin}${url.pathname}`]
+        } catch {
+            return []
+        }
+    })
+    const imagePolicy = ["'self'", 'data:', 'blob:', ...remoteImageSources].join(' ')
+    const policy = `default-src 'none'; img-src ${imagePolicy}; style-src 'unsafe-inline'; font-src 'self' data:; frame-src 'none'; media-src 'none'; object-src 'none'; connect-src 'none'; base-uri 'none'; form-action 'none'`
     return `<!doctype html>
 <html>
 <head>
   <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="${policy}" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     :root { color-scheme: ${theme}; }
@@ -198,6 +211,59 @@ export function buildMailFrameHtml(html: string, theme: 'light' | 'dark' = 'ligh
 </html>`
 }
 
+export function htmlWithApprovedRemoteImages(html: string, safeRemoteUrls: string[]) {
+    const normalizedSafeUrls = new Set(safeRemoteUrls.flatMap(value => {
+        const normalized = normalizeRemoteImageUrl(value)
+        return normalized ? [normalized] : []
+    }))
+    const parsed = new DOMParser().parseFromString(html, 'text/html')
+
+    // Keep the message readable while preventing every non-image resource path.
+    parsed.querySelectorAll('script, iframe, frame, frameset, object, embed, video, audio, source, track, link, base, style, svg, meta[http-equiv]').forEach(node => node.remove())
+    parsed.querySelectorAll('[style], [background], [srcset], [poster], [data]').forEach(node => {
+        node.removeAttribute('style')
+        node.removeAttribute('background')
+        node.removeAttribute('srcset')
+        node.removeAttribute('poster')
+        node.removeAttribute('data')
+    })
+    parsed.querySelectorAll('[src]').forEach(node => {
+        const src = node.getAttribute('src') || ''
+        if (node.tagName.toLowerCase() !== 'img') {
+            node.removeAttribute('src')
+            return
+        }
+        const normalized = normalizeRemoteImageUrl(src)
+        if (normalized && normalizedSafeUrls.has(normalized)) {
+            node.setAttribute('src', normalized)
+        } else if (!src.startsWith('/') || src.startsWith('//')) {
+            if (src.toLowerCase().startsWith('data:image/')) return
+            node.removeAttribute('src')
+        }
+    })
+
+    return parsed.body.innerHTML
+}
+
+export function normalizeRemoteImageUrl(value: string) {
+    try {
+        const url = new URL(value)
+        if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) return null
+        url.hash = ''
+        return url.href
+    } catch {
+        return null
+    }
+}
+
+export function remoteImageUrlsFromHtml(html: string) {
+    const parsed = new DOMParser().parseFromString(html, 'text/html')
+    return new Set(Array.from(parsed.querySelectorAll('img[src]'), image => {
+        const src = image.getAttribute('src') || ''
+        return normalizeRemoteImageUrl(src)
+    }).filter((url): url is string => Boolean(url)))
+}
+
 export async function fileToDraftAttachment(file: File): Promise<DraftAttachment> {
     const buffer = await file.arrayBuffer()
     return {
@@ -208,38 +274,71 @@ export async function fileToDraftAttachment(file: File): Promise<DraftAttachment
     }
 }
 
-export function AttachmentPreview({ attachment, mailboxUser }: { attachment: MailAttachment, mailboxUser: string }) {
-    const url = mailBlobUrl(mailboxUser, attachment.blobId, attachment.name)
+export function AttachmentPreview({ attachment, mailboxUser, reputation, checking }: { attachment: MailAttachment, mailboxUser: string, reputation?: MailReputation, checking: boolean }) {
+    const [url, setUrl] = useState('')
+    const [error, setError] = useState(false)
+    const allowedByReputation = !checking && Boolean(reputation && reputation.status !== 'unavailable' && (reputation.status === 'unknown' || (reputation.flagged ?? 0) === 0))
+    useEffect(() => {
+        const controller = new AbortController()
+        let objectUrl = ''
+        setUrl('')
+        setError(false)
+        if (!allowedByReputation) return () => controller.abort()
+        void fetchMailBlob(mailboxUser, attachment.blobId, attachment.name, controller.signal)
+            .then(response => response.blob())
+            .then(blob => {
+                if (controller.signal.aborted) return
+                objectUrl = URL.createObjectURL(blob)
+                setUrl(objectUrl)
+            })
+            .catch(() => { if (!controller.signal.aborted) setError(true) })
+        return () => {
+            controller.abort()
+            if (objectUrl) URL.revokeObjectURL(objectUrl)
+        }
+    }, [mailboxUser, attachment.blobId, attachment.name, allowedByReputation])
+
+    const blockedMessage = checking
+        ? 'Checking VirusTotal…'
+        : !reputation || reputation.status === 'unavailable'
+            ? 'VirusTotal status unavailable; download blocked.'
+            : reputation.status === 'known' && (reputation.flagged ?? 0) > 0
+                ? 'Download blocked because VirusTotal found a potential threat.'
+                : 'Loading attachment…'
+
     if (inlineAttachmentTypes.has(attachment.type.split(';', 1)[0].trim().toLowerCase())) {
         return (
-            <a href={url} target='_blank' rel='noopener noreferrer' className='rounded-lg border border-ui-border bg-ui-raised p-2.5 transition hover:bg-ui-panel'>
-                <Image src={url} alt={attachment.name} className='h-36 w-full rounded-lg object-cover' />
+            <div className='rounded-lg border border-ui-border bg-ui-raised p-2.5'>
+                {url ? <a href={url} target='_blank' rel='noopener noreferrer'><Image src={url} unoptimized alt={attachment.name} className='h-36 w-full rounded-lg object-cover' /></a> : <div className='flex h-36 items-center justify-center text-xs text-ui-muted'>{error ? 'Unable to load image.' : blockedMessage}</div>}
                 <p className='mt-2 truncate text-[11px] font-medium text-ui-text'>{attachment.name}</p>
-            </a>
+            </div>
         )
     }
 
     return (
-        <a href={url} download={attachment.name} className='rounded-lg border border-ui-border bg-ui-raised p-2.5 text-[11px] text-ui-muted transition hover:bg-ui-panel'>
+        <a href={allowedByReputation ? url || undefined : undefined} download={attachment.name} aria-disabled={!url || !allowedByReputation} onClick={event => { if (!url || !allowedByReputation) event.preventDefault() }} className='rounded-lg border border-ui-border bg-ui-raised p-2.5 text-[11px] text-ui-muted transition hover:bg-ui-panel'>
             <p className='truncate font-medium text-ui-text'>{attachment.name}</p>
-            <p className='mt-1 text-[10px] text-ui-muted'>{attachment.type} • {prettyBytes(attachment.size)}</p>
+            <p className='mt-1 text-[10px] text-ui-muted'>{error ? 'Unable to load attachment.' : !allowedByReputation ? blockedMessage : !url ? 'Loading attachment…' : `${attachment.type} • ${prettyBytes(attachment.size)}`}</p>
         </a>
     )
 }
 
 const inlineAttachmentTypes = new Set([
-    'image/avif',
     'image/gif',
     'image/jpeg',
     'image/png',
     'image/webp',
 ])
 
-export function withInlineAttachments(message: MailMessage, mailboxUser: string) {
+export function isInlineAttachmentType(value: string) {
+    return inlineAttachmentTypes.has(value.split(';', 1)[0].trim().toLowerCase())
+}
+
+export function withInlineAttachments(message: MailMessage, _mailboxUser: string, blobUrls: Record<string, string> = {}) {
     let html = message.htmlBody
     for (const attachment of message.attachments) {
         if (attachment.cid) {
-            const url = mailBlobUrl(mailboxUser, attachment.blobId, attachment.name)
+            const url = isInlineAttachmentType(attachment.type) ? blobUrls[attachment.blobId] || '' : ''
             html = html.replaceAll(`cid:${attachment.cid}`, url)
             html = html.replaceAll(`cid:<${attachment.cid}>`, url)
         }

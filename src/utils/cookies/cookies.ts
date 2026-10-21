@@ -25,24 +25,17 @@ export function setCookieWithExpiresAt(name: string, value: string, expiresAt?: 
 }
 
 export function removeCookies(...cookies: string[]) {
-    for (const cookie of cookies) {
-        removeCookie(cookie)
-    }
+    for (const cookie of cookies) removeCookie(cookie)
 }
 
 export function removeCookie(name: string) {
     document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; SameSite=Lax`
     const domain = sharedCookieDomain()
-    if (domain) {
-        document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; SameSite=Lax${domain}`
-    }
+    if (domain) document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; SameSite=Lax${domain}`
 }
 
 function sharedCookieDomain() {
-    if (typeof window === 'undefined') {
-        return ''
-    }
-
+    if (typeof window === 'undefined') return ''
     const hostname = window.location.hostname
     return hostname === 'hanasand.com' || hostname.endsWith('.hanasand.com')
         ? '; domain=.hanasand.com'
@@ -50,10 +43,7 @@ function sharedCookieDomain() {
 }
 
 function removeSharedDomainCookie(name: string) {
-    if (typeof window === 'undefined') {
-        return
-    }
-
+    if (typeof window === 'undefined') return
     const hostname = window.location.hostname
     if (hostname === 'hanasand.com' || hostname.endsWith('.hanasand.com')) {
         document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=.hanasand.com; SameSite=Lax; Secure`

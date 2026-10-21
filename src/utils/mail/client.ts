@@ -1,7 +1,14 @@
 'use client'
 
-import { getCookie } from '@/utils/cookies/cookies'
-import type { MailOverview } from './types'
+import { getCookie, setCookieWithExpiresAt } from '@/utils/cookies/cookies'
+import type { MailAttachmentReputation, MailOverview, MailRemoteUrl } from './types'
+
+const MAIL_API_BASE = (process.env.NEXT_PUBLIC_MAIL_API_BASE
+    || (process.env.NODE_ENV === 'production' ? 'https://api.hanasand.com/api' : '/api/backend')).replace(/\/+$/, '')
+
+function mailApiUrl(path: string) {
+    return `${MAIL_API_BASE}${path}`
+}
 
 export type DraftAttachment = {
     name: string
@@ -44,7 +51,7 @@ export async function fetchMailOverview(params: { mailboxUser?: string, mailboxI
 
     if (params.after) search.set('after', params.after)
 
-    const response = await fetchWithTimeout(`/api/backend/mail/overview?${search.toString()}`, {
+    const response = await fetchWithTimeout(mailApiUrl(`/mail/overview?${search.toString()}`), {
         headers,
         cache: 'no-store',
     }, 15_000)
@@ -65,7 +72,7 @@ export async function searchMail(params: { mailboxUser: string, mailboxId: strin
     const search = new URLSearchParams({ mailboxUser: params.mailboxUser, mailboxId: params.mailboxId, query: params.query })
     if (params.after) search.set('after', params.after)
 
-    const response = await fetchWithTimeout(`/api/backend/mail/search?${search.toString()}`, {
+    const response = await fetchWithTimeout(mailApiUrl(`/mail/search?${search.toString()}`), {
         headers,
         cache: 'no-store',
     }, 15_000)
@@ -80,13 +87,53 @@ export async function searchMail(params: { mailboxUser: string, mailboxId: strin
     }
 }
 
+export async function fetchMailRemoteContent(params: { mailboxUser: string, messageId: string }) {
+    const headers = authHeaders()
+    if (!headers) throw new Error('Unauthorized.')
+
+    const search = new URLSearchParams({ mailboxUser: params.mailboxUser })
+    const response = await fetchWithTimeout(mailApiUrl(`/mail/message/${encodeURIComponent(params.messageId)}/reputation?${search.toString()}`), {
+        headers,
+        cache: 'no-store',
+    }, 15_000)
+    const payload = await response.json().catch(() => ({})) as { error?: string, messageId?: string, remoteUrls?: MailRemoteUrl[], attachments?: MailAttachmentReputation[] }
+    if (!response.ok) throw new Error(payload.error || 'Unable to check remote email images.')
+    if (payload.messageId !== params.messageId || !Array.isArray(payload.remoteUrls)) {
+        throw new Error('Remote email image status is unavailable.')
+    }
+
+    const checked = await Promise.all(payload.remoteUrls.map(async item => {
+        if (!item?.id || !item.url || item.reputation?.provider !== 'virustotal') return null
+        const canonical = canonicalRemoteUrl(item.url)
+        if (!canonical || canonical !== item.url) return null
+        const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonical)).catch(() => null)
+        if (!digest) return null
+        const id = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')
+        return id === item.id ? item : null
+    }))
+    const remoteUrls = checked.filter((item): item is MailRemoteUrl => item !== null)
+    const attachments = Array.isArray(payload.attachments) ? payload.attachments.filter(item => Boolean(item?.blobId && item?.reputation?.provider === 'virustotal')) : []
+    return { remoteUrls, attachments }
+}
+
+function canonicalRemoteUrl(value: string) {
+    try {
+        const url = new URL(value)
+        if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) return null
+        url.hash = ''
+        return url.href
+    } catch {
+        return null
+    }
+}
+
 export async function fetchHasUnreadMail() {
     const headers = authHeaders()
     if (!headers) {
         throw new Error('Unauthorized.')
     }
 
-    const response = await fetchWithTimeout('/api/backend/mail/overview?unreadOnly=true', {
+    const response = await fetchWithTimeout(mailApiUrl('/mail/overview?unreadOnly=true'), {
         headers,
         cache: 'no-store',
     }, 7_000)
@@ -108,8 +155,8 @@ export async function sendMail(body: {
     textBody: string
     htmlBody?: string
     attachments?: DraftAttachment[]
-}) {
-    return postJson('/mail/send', body) as Promise<{
+}, idempotencyKey: string) {
+    return postJson('/mail/send', body, { 'Idempotency-Key': idempotencyKey }) as Promise<{
         ok: boolean
         mailboxUser: string
         sentMailboxId: string | null
@@ -138,7 +185,7 @@ export async function deleteFilter(id: number, mailboxUser?: string) {
     }
 
     const search = mailboxUser ? `?mailboxUser=${encodeURIComponent(mailboxUser)}` : ''
-    const response = await fetch(`/api/backend/mail/filters/${id}${search}`, { method: 'DELETE', headers })
+    const response = await fetchWithTimeout(mailApiUrl(`/mail/filters/${id}${search}`), { method: 'DELETE', headers }, 15_000)
     if (!response.ok) {
         redirectForReauthentication(response)
         const payload = await response.json().catch(() => ({}))
@@ -155,22 +202,31 @@ export async function messageAction(messageId: string, body: {
     return postJson(`/mail/message/${messageId}/action`, body)
 }
 
-export function mailBlobUrl(mailboxUser: string, blobId: string, name: string) {
-    return `/api/backend/mail/blob/${encodeURIComponent(mailboxUser)}/${encodeURIComponent(blobId)}/${encodeURIComponent(name)}`
+export async function fetchMailBlob(mailboxUser: string, blobId: string, name: string, signal?: AbortSignal) {
+    const headers = authHeaders()
+    if (!headers) throw new Error('Unauthorized.')
+
+    const path = `/mail/blob/${encodeURIComponent(mailboxUser)}/${encodeURIComponent(blobId)}/${encodeURIComponent(name)}`
+    const response = await fetchWithTimeout(mailApiUrl(path), { headers, cache: 'no-store', signal }, 20_000)
+    if (!response.ok) {
+        const payload = await response.json().catch(() => ({})) as { error?: string }
+        throw new Error(payload.error || 'Unable to load this attachment.')
+    }
+    return response
 }
 
-async function postJson(path: string, body: Record<string, unknown>) {
+async function postJson(path: string, body: Record<string, unknown>, extraHeaders: Record<string, string> = {}) {
     const headers = authHeaders()
     if (!headers) {
         throw new Error('Unauthorized.')
     }
 
-    const response = await fetch(`/api/backend${path}`, {
+    const response = await fetchWithTimeout(mailApiUrl(path), {
         method: 'POST',
-        headers,
+        headers: { ...headers, ...extraHeaders },
         body: JSON.stringify(body),
         cache: 'no-store',
-    })
+    }, 15_000)
 
     const payload = await response.json().catch(() => null)
     if (!response.ok) {
@@ -183,9 +239,14 @@ async function postJson(path: string, body: Record<string, unknown>) {
 
 async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit, timeoutMs: number) {
     const controller = new AbortController()
+    const callerSignal = init.signal
+    const abortForCaller = () => controller.abort(callerSignal?.reason)
+    if (callerSignal?.aborted) abortForCaller()
+    else callerSignal?.addEventListener('abort', abortForCaller, { once: true })
     const timeout = window.setTimeout(() => controller.abort(), timeoutMs)
     try {
         const response = await fetch(input, { ...init, signal: controller.signal })
+        refreshAccessToken(response)
         redirectForReauthentication(response)
         return response
     } catch (error) {
@@ -196,7 +257,14 @@ async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit, tim
         throw error
     } finally {
         window.clearTimeout(timeout)
+        callerSignal?.removeEventListener('abort', abortForCaller)
     }
+}
+
+function refreshAccessToken(response: Response) {
+    const token = response.headers.get('x-access-token')
+    if (!token) return
+    setCookieWithExpiresAt('access_token', token, response.headers.get('x-access-token-expires-at'))
 }
 
 function normalizeMailOverview(payload: Partial<MailOverview>): MailOverview {
