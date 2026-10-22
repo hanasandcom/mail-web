@@ -59,10 +59,10 @@ export default function MailSignIn({ returnTo, initialError }: { returnTo: strin
         loginForm.setBusy(true)
         loginForm.setError('')
         try {
-            const response = await fetch(`/api/auth/login/${encodeURIComponent(identifier.trim())}`, {
+            const response = await fetch('/api/auth/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ password }),
+                body: JSON.stringify({ username: identifier, password }),
                 cache: 'no-store',
                 signal: AbortSignal.timeout(15_000),
             })

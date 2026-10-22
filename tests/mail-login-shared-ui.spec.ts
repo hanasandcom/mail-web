@@ -18,7 +18,7 @@ test('Mail sign-in renders the locally bundled Identity controls', async ({ page
 })
 
 test('password sign-in keeps Mail’s session cookie adapter', async ({ page, context }) => {
-    await page.route('**/api/auth/login/mail-user', route => route.fulfill({ json: {
+    await page.route('**/api/auth/login', route => route.fulfill({ json: {
         id: 'mail-user', name: 'Mail User', avatar: '', token: 'mail-session-token',
         expires_at: new Date(Date.now() + 60_000).toISOString(),
     } }))
@@ -26,8 +26,10 @@ test('password sign-in keeps Mail’s session cookie adapter', async ({ page, co
     await page.goto('/')
     await page.getByRole('textbox', { name: 'Email or username' }).fill('mail-user')
     await page.getByLabel('Password').fill('correct horse battery staple')
+    const loginRequest = page.waitForRequest(request => request.url().endsWith('/api/auth/login'))
     await page.getByRole('button', { name: 'Sign in', exact: true }).click()
 
+    expect((await loginRequest).postDataJSON()).toEqual({ username: 'mail-user', password: 'correct horse battery staple' })
     await expect(page).toHaveURL(/\/$/)
     const cookies = await context.cookies()
     expect(cookies.find(cookie => cookie.name === 'access_token')?.value).toBe('mail-session-token')

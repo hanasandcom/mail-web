@@ -96,8 +96,8 @@ async function createUser(request: APIRequestContext, id: string, name: string) 
 }
 
 async function deleteUser(request: APIRequestContext, id: string, secret: string) {
-    const loginResponse = await request.post(`${apiBase}/auth/login/${id}`, {
-        data: { password: secret },
+    const loginResponse = await request.post(`${apiBase}/auth/login`, {
+        data: { username: id, password: secret },
     })
 
     if (!loginResponse.ok()) {
