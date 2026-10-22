@@ -1,8 +1,7 @@
 import { createHash } from 'node:crypto'
 import run from '#db'
 
-const VT_BASE = 'https://www.virustotal.com/api/v3'
-const REQUEST_TIMEOUT_MS = 3500
+const BROWSER_LOOKUP_TIMEOUT_MS = 45_000
 const KNOWN_TTL_MS = 24 * 60 * 60 * 1000
 const UNKNOWN_TTL_MS = 60 * 60 * 1000
 const MAX_URLS_PER_MESSAGE = 50
@@ -15,6 +14,7 @@ export type UrlReputation = {
     checkedAt?: string
     reportUrl?: string
 }
+type ManagedBrowserVerdict = { status: 'unknown' } | { status: 'unavailable' } | { status: 'known'; flagged: number; total: number }
 
 export type CanonicalRemoteUrl = { id: string, url: string }
 
@@ -74,26 +74,9 @@ export async function lookupUrlReputation(url: CanonicalRemoteUrl): Promise<UrlR
         }
     }
 
-    const apiKey = process.env.VIRUSTOTAL_API_KEY
-    if (!apiKey) return { provider: 'virustotal', status: 'unavailable' }
-
-    try {
-        const response = await fetch(`${VT_BASE}/urls/${vtId}`, {
-            headers: { 'x-apikey': apiKey, accept: 'application/json' },
-            signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-        })
-        if (response.status === 404) return await cacheUrlVerdict('url', url.id, { status: 'unknown', reportUrl })
-        if (!response.ok) return { provider: 'virustotal', status: 'unavailable' }
-        const payload = await response.json() as VirusTotalUrlResponse
-        if (payload.data?.type !== 'url' || payload.data.id !== vtId) return { provider: 'virustotal', status: 'unavailable' }
-        const stats = payload.data.attributes?.last_analysis_stats
-        if (!stats || !Object.values(stats).every(value => Number.isFinite(value) && value >= 0)) return { provider: 'virustotal', status: 'unavailable' }
-        const flagged = Number(stats.malicious || 0) + Number(stats.suspicious || 0)
-        const total = Object.values(stats).reduce((sum, value) => sum + Number(value), 0)
-        return await cacheUrlVerdict('url', url.id, { status: 'known', flagged, total, reportUrl })
-    } catch {
-        return { provider: 'virustotal', status: 'unavailable' }
-    }
+    const verdict = await lookupInManagedBrowser('url', url.url)
+    if (verdict.status === 'unavailable') return { provider: 'virustotal', status: 'unavailable', reportUrl }
+    return cacheUrlVerdict('url', url.id, { ...verdict, reportUrl })
 }
 
 export async function lookupFileHashReputation(sha256: string): Promise<UrlReputation> {
@@ -109,24 +92,34 @@ export async function lookupFileHashReputation(sha256: string): Promise<UrlReput
             checkedAt: new Date(row.checked_at).toISOString(), reportUrl: row.report_url,
         }
     }
-    const apiKey = process.env.VIRUSTOTAL_API_KEY
-    if (!apiKey) return { provider: 'virustotal', status: 'unavailable' }
+    const verdict = await lookupInManagedBrowser('file', sha256)
+    if (verdict.status === 'unavailable') return { provider: 'virustotal', status: 'unavailable', reportUrl }
+    return cacheUrlVerdict('file', sha256, { ...verdict, reportUrl })
+}
+
+async function lookupInManagedBrowser(kind: 'file' | 'url', value: string): Promise<ManagedBrowserVerdict> {
+    const endpoint = process.env.BROWSER_REPUTATION_LOOKUP_URL
+    const token = process.env.BROWSER_REPUTATION_LOOKUP_TOKEN
+    if (!endpoint || !token) return { status: 'unavailable' }
     try {
-        const response = await fetch(`${VT_BASE}/files/${sha256}`, {
-            headers: { 'x-apikey': apiKey, accept: 'application/json' },
-            signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+            body: JSON.stringify({ kind, value }),
+            signal: AbortSignal.timeout(BROWSER_LOOKUP_TIMEOUT_MS),
         })
-        if (response.status === 404) return await cacheUrlVerdict('file', sha256, { status: 'unknown', reportUrl })
-        if (!response.ok) return { provider: 'virustotal', status: 'unavailable' }
-        const payload = await response.json() as VirusTotalUrlResponse
-        if (payload.data?.type !== 'file' || payload.data.id !== sha256) return { provider: 'virustotal', status: 'unavailable' }
-        const stats = payload.data.attributes?.last_analysis_stats
-        if (!stats || !Object.values(stats).every(value => Number.isFinite(value) && value >= 0)) return { provider: 'virustotal', status: 'unavailable' }
-        const flagged = Number(stats.malicious || 0) + Number(stats.suspicious || 0)
-        const total = Object.values(stats).reduce((sum, value) => sum + Number(value), 0)
-        return await cacheUrlVerdict('file', sha256, { status: 'known', flagged, total, reportUrl })
+        if (!response.ok) return { status: 'unavailable' }
+        const payload = await response.json() as { status?: unknown; flagged?: unknown; total?: unknown }
+        if (payload.status === 'unknown') return { status: 'unknown' }
+        if (payload.status !== 'known' || !Number.isSafeInteger(payload.flagged) || !Number.isSafeInteger(payload.total)) {
+            return { status: 'unavailable' }
+        }
+        const flagged = Number(payload.flagged)
+        const total = Number(payload.total)
+        if (flagged < 0 || total < 1 || flagged > total) return { status: 'unavailable' }
+        return { status: 'known', flagged, total }
     } catch {
-        return { provider: 'virustotal', status: 'unavailable' }
+        return { status: 'unavailable' }
     }
 }
 
@@ -144,8 +137,4 @@ async function cacheUrlVerdict(resourceType: 'url' | 'file', resourceHash: strin
         ...(verdict.total === undefined ? {} : { total: verdict.total }),
         checkedAt: checkedAt.toISOString(), reportUrl: verdict.reportUrl,
     }
-}
-
-type VirusTotalUrlResponse = {
-    data?: { type?: string, id?: string, attributes?: { last_analysis_stats?: Record<string, number> } }
 }

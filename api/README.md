@@ -80,6 +80,13 @@ only.
 with Support. It protects the private Support inbox and reply routes; it does not
 replace the encryption key or expose these routes through the public Mail proxy.
 
+Mail reputation checks use the isolated managed browser service. Set
+`BROWSER_REPUTATION_LOOKUP_URL` to the private Browser API endpoint and configure
+`BROWSER_REPUTATION_LOOKUP_TOKEN` to match `BROWSER_MAIL_REPUTATION_TOKEN` in the
+Browsers service. Mail sends only file SHA-256 hashes and canonical remote URLs; file
+bytes remain in Mail. Results are cached in the Mail database. No VirusTotal API key is
+used.
+
 ## Container
 
 `Dockerfile` builds the API as a standalone Bun service. `compose.example.yml` binds it

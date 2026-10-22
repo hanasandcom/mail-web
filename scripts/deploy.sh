@@ -31,6 +31,11 @@ if [[ ! -f "$production_env" || ! -f "$api_compose" ]]; then
     echo 'Mail API production configuration is missing.' >&2
     exit 1
 fi
+browser_reputation_token="$(awk -F= '$1 == "BROWSER_REPUTATION_LOOKUP_TOKEN" { sub(/^[^=]*=/, ""); print; exit }' "$production_env")"
+if [[ ! "$browser_reputation_token" =~ ^[a-f0-9]{64}$ ]]; then
+    echo 'Set BROWSER_REPUTATION_LOOKUP_TOKEN to the matching Browser service secret in the Mail API environment.' >&2
+    exit 1
+fi
 
 docker build --pull --build-arg NEXT_PUBLIC_MAIL_API_BASE=https://mail.hanasand.com/api -t "$image" "$repo_root"
 docker rm -f "$candidate" >/dev/null 2>&1 || true
@@ -102,6 +107,23 @@ compose_api up -d --no-build --wait
 api_container="$(compose_api ps -q mail-api)"
 if [[ -z "$api_container" || "$(docker inspect -f '{{.State.Health.Status}}' "$api_container")" != healthy ]]; then
     echo 'Mail API candidate did not become healthy.' >&2
+    compose_api down >/dev/null 2>&1 || true
+    exit 1
+fi
+if ! docker exec "$api_container" bun -e '
+const endpoint = process.env.BROWSER_REPUTATION_LOOKUP_URL
+const token = process.env.BROWSER_REPUTATION_LOOKUP_TOKEN
+if (!endpoint || !token) throw new Error("Managed Browser lookup is not configured")
+const response = await fetch(endpoint, {
+  method: "POST",
+  headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+  body: JSON.stringify({ kind: "invalid", value: "" }),
+  signal: AbortSignal.timeout(5000),
+})
+if (response.status !== 400) throw new Error(`Browser reputation route returned HTTP ${response.status}, expected 400 for invalid input`)
+console.log("Private Browser reputation route is reachable and authenticated.")
+'; then
+    echo 'Mail API candidate could not authenticate to the private Browser reputation route.' >&2
     compose_api down >/dev/null 2>&1 || true
     exit 1
 fi

@@ -39,7 +39,8 @@ services:
       MAIL_MANAGESIEVE_PORT: ${MAIL_MANAGESIEVE_PORT:-4190}
       MAIL_JMAP_TIMEOUT_MS: ${MAIL_JMAP_TIMEOUT_MS:-8000}
       MAIL_SMTP_REQUIRE_TLS: ${MAIL_SMTP_REQUIRE_TLS:-true}
-      VIRUSTOTAL_API_KEY: ${VIRUSTOTAL_API_KEY:-}
+      BROWSER_REPUTATION_LOOKUP_URL: ${BROWSER_REPUTATION_LOOKUP_URL:-http://browser-api:8080/api/browser/internal/reputation}
+      BROWSER_REPUTATION_LOOKUP_TOKEN: ${BROWSER_REPUTATION_LOOKUP_TOKEN:-}
     networks:
       mail-backend:
         # Keep a reserved address so Stalwart's production network policy can
