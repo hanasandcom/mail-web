@@ -1,6 +1,6 @@
 'use client'
 
-import { MailUiApiProvider, MailWorkspace as SharedMailWorkspace, type MailUiApi } from '@hanasand/mail-ui'
+import { MailUiApiProvider, MailWorkspace as SharedMailWorkspace, type MailUiApi } from 'hanasand/mail'
 import * as mailApi from '../../utils/mail/client'
 
 const api = mailApi satisfies MailUiApi

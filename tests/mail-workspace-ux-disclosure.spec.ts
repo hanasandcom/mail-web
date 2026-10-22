@@ -16,7 +16,7 @@ test('standalone hostname renders shared mail UI and calls its own API', async (
     expect(page).toContain('<MailSignIn')
     expect(page).not.toContain('redirect(')
     expect(page).not.toContain('hanasand.com/dashboard/mail')
-    expect(workspace).toContain("from '@hanasand/mail-ui'")
+    expect(workspace).toContain("from 'hanasand/mail'")
     expect(workspace).toContain('<MailUiApiProvider api={api}>')
     expect(client).toContain("process.env.NEXT_PUBLIC_MAIL_API_BASE || '/api'")
     expect(client).not.toContain('api.hanasand.com')
