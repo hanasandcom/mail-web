@@ -10,6 +10,7 @@ export {
     ensureMailAccountForUser,
     getMailAccount,
     provisionExistingMailAccounts,
+    provisionConfiguredMailAddresses,
     rotateMailPasswordForUser,
     syncMailPasswordForUser,
 } from './accountProvisioning.ts'

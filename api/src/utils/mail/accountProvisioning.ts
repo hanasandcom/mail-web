@@ -6,6 +6,7 @@ import { encryptMailSecret, generateMailSecret } from './crypto.ts'
 import { addressForUser, addressesForUser, mailboxLocalPartForUser } from './helpers.ts'
 import { type AdminPatch, createPrincipal, ensureSetting, findPrincipalByName, patchPrincipal, setDomainCatchAllAddress } from './stalwartAdmin.ts'
 import { getStoredMailSecret } from './accountSecrets.ts'
+import { getMailboxList } from './jmapMailbox.ts'
 
 type UserRow = {
     id: string
@@ -36,6 +37,17 @@ export async function provisionExistingMailAccounts() {
         await ensureMailAccountForUser(user.id, user.name).catch(error => {
             console.error(`Failed to provision mail account for ${user.id}`, error)
         })
+    }
+}
+
+export async function provisionConfiguredMailAddresses() {
+    for (const [userId, address] of mailConfig.userAddresses) {
+        const user = await run('SELECT id, name FROM users WHERE id = $1 AND active = TRUE', [userId])
+        if (!user.rows.length) throw new Error(`Configured mail address has no active Identity user: ${userId}.`)
+        const account = await ensureMailAccountForUser(userId, (user.rows[0] as UserRow).name)
+        if (account.address !== address) throw new Error(`Configured mailbox address was not applied for ${userId}.`)
+        await getMailboxList(account.username, account.password)
+        console.info(`Verified configured mailbox address ${address}.`)
     }
 }
 

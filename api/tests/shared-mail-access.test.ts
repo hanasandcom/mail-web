@@ -33,7 +33,7 @@ mock.module('../src/utils/db.ts', () => ({ default: async (sql: string, values: 
 mock.module('../src/utils/auth/organizationPageAccess.ts', () => ({ hasHanasandInternalPageAccess: async (id: string) => internalMember && id === 'member' }))
 mock.module('../src/utils/mail/config.ts', () => ({
     requireMailAdminConfig: () => { throw new Error('unused') },
-    mailConfig: { domain: 'example.test', systemSenderLocalPart: 'noreply', userAliases: new Map() },
+    mailConfig: { domain: 'example.test', systemSenderLocalPart: 'noreply', userAliases: new Map(), userAddresses: new Map() },
 }))
 mock.module('../src/utils/mail/crypto.ts', () => ({
     tryDecryptMailSecret: () => decryptableMailSecret,
