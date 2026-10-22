@@ -4,12 +4,14 @@ Standalone webmail for [mail.hanasand.com](https://mail.hanasand.com). The Hanas
 
 ## Architecture
 
-- `packages/mail-ui/` contains the shared React workspace, message reader, composer, mailbox controls, and API contract.
+- The published `hanasand` package contains the shared React workspace, message reader, composer, mailbox controls, and API contract used by both browser clients. Its source is maintained in the Hanasand repository.
 - `src/` contains the standalone Next.js app, sign-in page, and browser Mail API client.
 - `api/` contains the dedicated Fastify Mail API. It validates sessions with Identity, reads the existing PostgreSQL account/mail data, and talks to Stalwart over the private mail network.
 - `mail-server` runs Stalwart and the SMTP relay. It does not host the webmail interface or browser API.
 
 The standalone host serves its own UI at `/`, Identity routes at `/api/auth/*`, and the Mail API at `/api/mail/*`. The dashboard calls `https://mail.hanasand.com/api` directly from the browser. Identity validates the user's session for the dedicated Mail API. Identity and the existing account database remain shared dependencies; mail requests do not depend on the main Hanasand API or frontend.
+
+Changes to the shared React workspace must be released through the `hanasand` package and then adopted here through the lockfile. API and standalone-app changes belong in this repository.
 
 ## Local development
 
