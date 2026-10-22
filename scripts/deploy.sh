@@ -214,7 +214,7 @@ wait_for_mail_status() {
     return 1
 }
 if ! docker exec openresty /usr/local/openresty/bin/openresty -T 2>&1 \
-    | grep -Fq "proxy_pass http://127.0.0.1:${api_port};"; then
+    | grep -F "proxy_pass http://127.0.0.1:${api_port};" >/dev/null; then
     echo 'OpenResty did not load the candidate Mail API route; rolling back.' >&2
     cp -p "$backup" "$config"
     docker exec openresty /usr/local/openresty/bin/openresty -t >/dev/null
