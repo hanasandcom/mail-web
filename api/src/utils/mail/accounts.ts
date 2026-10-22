@@ -56,7 +56,7 @@ export async function getMailAccess(actorId: string, mailboxUser?: string) {
 
 export async function listAccessibleMailAccounts(actorId: string) {
     const permissions = await mailPermissions(actorId)
-    const personal = await listPersonalMailAccounts(actorId, permissions.any)
+    const personal = await listPersonalMailAccounts(actorId)
     return [
         ...personal.map(account => ({ ...account, shared: false })),
         ...(permissions.shared ? sharedMailboxes.map(mailbox => ({
@@ -68,22 +68,7 @@ export async function listAccessibleMailAccounts(actorId: string) {
     ]
 }
 
-async function listPersonalMailAccounts(actorId: string, canAccessAnyMailbox: boolean) {
-    if (canAccessAnyMailbox) {
-        const rows = await run(`
-            SELECT u.id, u.name, ma.mail_address
-            FROM users u
-            LEFT JOIN mail_accounts ma ON ma.user_id = u.id
-            WHERE u.active = TRUE AND ma.disabled_at IS NULL
-            ORDER BY u.id ASC
-        `)
-
-        return Promise.all(rows.rows.map(async (row) => {
-            const user = row as UserRow & { mail_address?: string | null }
-            return { id: user.id, name: user.name, address: user.mail_address || addressForUser(user.id) }
-        }))
-    }
-
+async function listPersonalMailAccounts(actorId: string) {
     const row = await run('SELECT id, name FROM users WHERE id = $1', [actorId])
     if (!row.rows.length) return []
 
