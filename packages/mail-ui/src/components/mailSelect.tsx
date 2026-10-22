@@ -145,10 +145,10 @@ export function MailSelect({
             onBlur={event => {
                 if (!rootRef.current?.contains(event.relatedTarget as Node | null)) setOpen(false)
             }}
-            className={`group flex h-11 w-full min-w-0 cursor-pointer select-none items-center gap-1.5 rounded-xl border px-1.5 py-1.5 text-left text-ui-text outline-none transition-[border-color,background-color,box-shadow,transform] duration-200 focus-visible:border-ui-primary focus-visible:ring-2 focus-visible:ring-ui-primary/20 active:scale-[.99] disabled:cursor-not-allowed ${open ? 'border-ui-primary/35 bg-ui-raised shadow-lg shadow-black/10 ring-1 ring-ui-primary/10' : 'border-ui-border/70 bg-ui-raised/70 shadow-sm shadow-ui-canvas/10 hover:border-ui-border hover:bg-ui-raised'} ${compact ? 'text-xs' : 'text-sm'}`}
+            className={`group flex h-10 w-full min-w-0 cursor-pointer select-none items-center gap-2 rounded-lg border px-1 py-2 text-left text-ui-text outline-none transition-[border-color,background-color,box-shadow] duration-200 focus-visible:border-ui-primary focus-visible:ring-2 focus-visible:ring-ui-primary/20 disabled:cursor-not-allowed ${open ? 'border-ui-primary/40 bg-ui-panel ring-1 ring-ui-primary/10' : 'border-ui-border/70 bg-ui-raised/60 hover:border-ui-border hover:bg-ui-raised'} ${compact ? 'text-xs' : 'text-sm'}`}
         >
-            <span className='min-w-0 flex-1 truncate text-left font-medium tracking-[-0.01em]'>{selectedOption?.label ?? ''}</span>
-            <span aria-hidden='true' className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-ui-muted transition-[background-color,color,transform] duration-200 ${open ? 'bg-ui-primary/10 text-ui-primary' : 'group-hover:text-ui-text'}`}>
+            <span className='min-w-0 flex-1 truncate text-left font-medium'>{selectedOption?.label ?? ''}</span>
+            <span aria-hidden='true' className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-ui-muted transition-colors duration-200 ${open ? 'text-ui-primary' : 'group-hover:text-ui-text'}`}>
                 <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} strokeWidth={1.8} />
             </span>
         </button>
@@ -157,7 +157,7 @@ export function MailSelect({
             role='listbox'
             aria-label={label}
             style={{ left: menuOffset, right: 'auto' }}
-            className='absolute top-[calc(100%+0.45rem)] z-[70] max-h-72 w-[min(18rem,calc(100vw-1.5rem))] min-w-full max-w-[calc(100vw-1.5rem)] overflow-y-auto overscroll-contain rounded-xl border border-ui-border bg-ui-raised p-1.5 text-ui-text shadow-xl shadow-black/20'
+            className='absolute top-[calc(100%+0.45rem)] z-[70] max-h-72 w-[min(18rem,calc(100vw-1.5rem))] min-w-full max-w-[calc(100vw-1.5rem)] overflow-y-auto overscroll-contain rounded-xl border border-ui-border/80 bg-ui-panel p-1.5 text-ui-text shadow-xl shadow-black/15 backdrop-blur-xl'
         >
             {options.map((option, index) => {
                 const selected = option.id === value
@@ -173,7 +173,7 @@ export function MailSelect({
                         setOpen(false)
                         triggerRef.current?.focus()
                     }}
-                    className={`flex min-h-11 cursor-pointer items-center gap-2 rounded-lg px-1.5 py-1.5 text-sm transition-[background-color,box-shadow,color] ${selected ? 'bg-ui-primary/10 font-semibold text-ui-text ring-1 ring-inset ring-ui-primary/15' : active ? 'bg-ui-panel text-ui-text' : 'text-ui-muted hover:bg-ui-panel hover:text-ui-text'}`}
+                    className={`flex min-h-11 cursor-pointer items-center gap-2 rounded-lg px-2 py-2 text-sm transition-colors ${selected ? 'bg-ui-primary/10 font-semibold text-ui-text ring-1 ring-inset ring-ui-primary/15' : active ? 'bg-ui-raised text-ui-text' : 'text-ui-muted hover:bg-ui-raised hover:text-ui-text'}`}
                 >
                     <span className='grid min-w-0 flex-1 gap-0.5'>
                         <span className='truncate'>{option.label}</span>

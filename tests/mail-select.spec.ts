@@ -46,8 +46,10 @@ test('mailbox selector keeps its chevron and menu in bounds and supports keyboar
         const style = getComputedStyle(element)
         return [style.paddingTop, style.paddingRight, style.paddingBottom, style.paddingLeft]
     })
-    expect(new Set(triggerPadding).size).toBe(1)
-    await expect(selector).toHaveClass(/rounded-xl/)
+    expect(triggerPadding[1]).toBe(triggerPadding[3])
+    expect(Number.parseFloat(triggerPadding[1])).toBeLessThan(Number.parseFloat(triggerPadding[0]))
+    expect(triggerPadding[0]).toBe(triggerPadding[2])
+    await expect(selector).toHaveClass(/rounded-lg/)
 
     await selector.focus()
     await selector.press('ArrowDown')
@@ -76,7 +78,9 @@ test('mailbox selector keeps its chevron and menu in bounds and supports keyboar
         const style = getComputedStyle(element)
         return [style.paddingTop, style.paddingRight, style.paddingBottom, style.paddingLeft]
     })
-    expect(new Set(folderPadding).size).toBe(1)
+    expect(folderPadding[1]).toBe(folderPadding[3])
+    expect(Number.parseFloat(folderPadding[1])).toBeLessThan(Number.parseFloat(folderPadding[0]))
+    expect(folderPadding[0]).toBe(folderPadding[2])
     const folderArrowRight = await folderSelector.evaluate(element => element.querySelector('svg')!.getBoundingClientRect().right)
     const folderButtonRight = await folderSelector.evaluate(element => element.getBoundingClientRect().right)
     expect(folderArrowRight).toBeLessThanOrEqual(folderButtonRight - 1)
