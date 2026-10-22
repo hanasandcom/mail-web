@@ -51,25 +51,30 @@ export async function provisionSharedMailboxes(ids = sharedMailboxes.map(mailbox
         const row = existing.rows[0]
         const address = `${mailbox.localPart}@${mailConfig.domain}`
         const principal = await findPrincipalByName(mailbox.localPart, 'individual')
+        const storedPassword = row ? tryDecryptMailSecret(row.mail_password_encrypted) : null
         const existingSecret = principal?.secrets?.find(secret => !secret.startsWith('otpauth://')) || null
-        const password = row
-            ? tryDecryptMailSecret(row.mail_password_encrypted)
-            : principal
-                ? existingSecret
-                : generateMailSecret()
+        // Stalwart is the recovery source when a previous Mail encryption key cannot open this row.
+        const password = storedPassword || existingSecret || (!principal ? generateMailSecret() : null)
         if (!password) {
             throw new Error(row
-                ? `Cannot decrypt stored ${mailbox.name} mailbox credentials.`
+                ? `Cannot decrypt stored ${mailbox.name} mailbox credentials and Stalwart has no recoverable credential; credentials were not changed.`
                 : `Existing ${mailbox.name} mailbox has no recoverable credential to link; credentials were not changed.`)
         }
-        await run(`INSERT INTO shared_mail_accounts (id, mail_username, mail_address, mail_password_encrypted)
-            VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO NOTHING`,
-        [mailbox.id, mailbox.localPart, address, encryptMailSecret(password)])
+        if (row && !storedPassword) {
+            await run('UPDATE shared_mail_accounts SET mail_password_encrypted = $2 WHERE id = $1', [mailbox.id, encryptMailSecret(password)])
+        } else if (!row) {
+            await run(`INSERT INTO shared_mail_accounts (id, mail_username, mail_address, mail_password_encrypted)
+                VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO NOTHING`,
+            [mailbox.id, mailbox.localPart, address, encryptMailSecret(password)])
+        }
         if (!principal) {
             await createPrincipal({ type: 'individual', name: mailbox.localPart, description: mailbox.name,
                 secrets: [password], emails: [address], roles: ['user'], quota: 0 })
-        } else if (!principal.emails?.includes(address)) {
-            await patchPrincipal(principal.name, [{ action: 'addItem', field: 'emails', value: address }])
+        } else {
+            const patches = []
+            if (!principal.secrets?.includes(password)) patches.push({ action: 'set' as const, field: 'secrets', value: [password] })
+            if (!principal.emails?.includes(address)) patches.push({ action: 'addItem' as const, field: 'emails', value: address })
+            if (patches.length) await patchPrincipal(principal.name, patches)
         }
     }
 }
