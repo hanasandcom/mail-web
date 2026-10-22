@@ -29,7 +29,7 @@
 
     "@emnapi/runtime": ["@emnapi/runtime@1.11.3", "", { "dependencies": { "tslib": "^2.4.0" } }, "sha512-Xz4Tpyki7XyrpbUK1jR1AhdAdaXyhhY4lZ3neLodmhpuWfy2PAQN5B46sAiU4liOXGLkHypn/qU+jvfWSCYYLA=="],
 
-    "hanasand": ["hanasand@1.0.0", "", {"dependencies":{"fflate":"^0.8.3"},"peerDependencies":{"react":">=19 <20","react-dom":">=19 <20","lucide-react":">=1","@types/react":">=19 <20","@types/react-dom":">=19 <20"},"peerDependenciesMeta":{"react-dom":{"optional":true},"lucide-react":{"optional":true},"@types/react-dom":{"optional":true}}}, "sha512-rkYnDq8ppJLQfsZnyvrnN+8fEG8KMW7mIXmMX/RJq7w64NcXHdtdLZh0YNyOi2hhi7gGyBv11qrSz2r7Vw88AA=="],
+    "hanasand": ["hanasand@1.0.1", "", {"dependencies":{"fflate":"^0.8.3"},"peerDependencies":{"react":">=19 <20","react-dom":">=19 <20","lucide-react":">=1","@types/react":">=19 <20","@types/react-dom":">=19 <20"},"peerDependenciesMeta":{"react-dom":{"optional":true},"lucide-react":{"optional":true},"@types/react-dom":{"optional":true}}}, "sha512-8RzRGx8dKwwrb1KZ3jCg/Sxp3Jdg4LR/3iP8MrgF7Eq8cg6+Wk4PkywpOj6krL81vH5lFE1qP6AXuuy+s9FqGg=="],
 
     "@img/colour": ["@img/colour@1.1.0", "", {}, "sha512-Td76q7j57o/tLVdgS746cYARfSyxk8iEfRxewL9h4OMzYhbW4TAcppl0mT4eyqXddh6L/jwoM75mo7ixa/pCeQ=="],
 
