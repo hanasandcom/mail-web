@@ -270,3 +270,54 @@ test('rejects ambiguous duplicate session cookies instead of choosing one', asyn
     expect(result).toBeNull()
     expect(calls).toBe(0)
 })
+
+test('forwards a native device proof bound to the actual Mail method and public path', async () => {
+    let requestBody: Record<string, unknown> | undefined
+    globalThis.fetch = (async (_input, init) => {
+        requestBody = JSON.parse(String(init?.body))
+        return Response.json({ user: { id: 'user', active: true } })
+    }) as typeof fetch
+    const reply = { code: () => reply, send: () => reply, header: () => reply } as never
+    const result = await validateMailSession({
+        method: 'GET', url: '/api/mail/overview?mailboxId=inbox',
+        headers: { authorization: 'Bearer session-token', id: 'user', dpop: 'synthetic-proof', 'x-device-proof-url': 'https://mail.hanasand.com/api/mail/overview', 'x-device-proof-method': 'GET' },
+        log: { error() {}, warn() {} },
+    } as never, reply)
+    expect(result?.id).toBe('user')
+    expect(requestBody).toEqual({ operation: 'validate', id: 'user', token: 'session-token', deviceProof: { proof: 'synthetic-proof', method: 'GET', url: 'https://mail.hanasand.com/api/mail/overview' } })
+    expect(requestBody).not.toHaveProperty('trustedInternal')
+})
+
+test('does not retry a rejected device proof or silently fall back to unbound validation', async () => {
+    const bodies: Record<string, unknown>[] = []
+    globalThis.fetch = (async (_input, init) => { bodies.push(JSON.parse(String(init?.body))); return new Response(null, { status: 401 }) }) as typeof fetch
+    const reply = { code: () => reply, send: () => reply, header: () => reply } as never
+    const result = await validateMailSession({
+        method: 'POST', url: '/api/mail/mailboxes',
+        headers: { authorization: 'Bearer session-token', id: 'user', dpop: 'replayed-proof' },
+        log: { error() {}, warn() {} },
+    } as never, reply)
+    expect(result).toBeNull()
+    expect(bodies).toHaveLength(1)
+    expect(bodies[0].deviceProof).toEqual({ proof: 'replayed-proof', method: 'POST', url: 'https://mail.hanasand.com/api/mail/mailboxes' })
+    expect(bodies[0]).not.toHaveProperty('trustedInternal')
+})
+
+test('rejects asserted methods and targets that do not describe the actual Mail operation', async () => {
+    let calls = 0
+    globalThis.fetch = (async () => { calls += 1; throw new Error('Invalid forwarding metadata must not reach Identity') }) as typeof fetch
+    const reply = { code: () => reply, send: () => reply, header: () => reply } as never
+    for (const headers of [
+        { 'x-device-proof-method': 'GET' },
+        { 'x-device-proof-url': 'https://mail.hanasand.com/api/mail/overview' },
+        { 'x-device-proof-url': 'http://mail.hanasand.com/api/mail/mailboxes' },
+        { 'x-device-proof-url': 'https://user:secret@mail.hanasand.com/api/mail/mailboxes' },
+        { 'x-device-proof-url': 'https://other.example/api/mail/mailboxes' },
+        { 'x-device-proof-url': 'https://mail.hanasand.com/api/mail/mailboxes?query=value' },
+        { 'x-device-proof-url': 'https://mail.hanasand.com/api/mail/mailboxes#fragment' },
+    ]) {
+        const result = await validateMailSession({ method: 'POST', url: '/api/mail/mailboxes', headers: { authorization: 'Bearer session-token', id: 'user', dpop: 'synthetic-proof', ...headers }, log: { error() {}, warn() {} } } as never, reply)
+        expect(result).toBeNull()
+    }
+    expect(calls).toBe(0)
+})

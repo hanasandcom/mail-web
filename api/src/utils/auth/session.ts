@@ -32,6 +32,20 @@ export async function validateMailSession(req: FastifyRequest, reply: FastifyRep
         return null
     }
 
+    // Bind Identity validation to this Mail request, not caller-supplied forwarding metadata.
+    const proof = singleHeader(req.headers.dpop)
+    const method = req.method.toUpperCase()
+    const target = `${MAIL_ORIGIN}${new URL(req.url, MAIL_ORIGIN).pathname}`
+    const assertedMethod = singleHeader(req.headers['x-device-proof-method'])
+    const assertedUrl = singleHeader(req.headers['x-device-proof-url'])
+    if (assertedMethod && assertedMethod !== method) return null
+    if (assertedUrl) {
+        try {
+            const url = new URL(assertedUrl)
+            if (url.protocol !== 'https:' || url.origin !== MAIL_ORIGIN || url.username || url.password || url.search || url.hash || url.toString() !== target) return null
+        } catch { return null }
+    }
+    const deviceProof = proof ? { proof, method, url: target } : undefined
     const tokens = cookieSession
         ? [cookieSession.token, cookieSession.fallbackToken].filter((candidate): candidate is string => Boolean(candidate))
         : [token]
@@ -54,7 +68,7 @@ export async function validateMailSession(req: FastifyRequest, reply: FastifyRep
                         Authorization: `Bearer ${serviceToken}`,
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ operation: 'validate', id, token: candidate }),
+                    body: JSON.stringify({ operation: 'validate', id, token: candidate, ...(deviceProof ? { deviceProof } : {}) }),
                     signal: AbortSignal.timeout(attemptBudgetMs),
                 })
             } catch (error) {
