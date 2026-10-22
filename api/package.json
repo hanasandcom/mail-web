@@ -6,6 +6,7 @@
   "scripts": {
     "start": "bun src/index.ts",
     "dev": "bun --watch src/index.ts",
+    "provision:shared-mailboxes": "bun src/scripts/provisionSharedMailboxes.ts",
     "typecheck": "tsc --noEmit",
     "test": "bun test"
   },

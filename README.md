@@ -40,6 +40,6 @@ The Playwright suite creates accounts and sends mail. Run it only against an iso
 
 ## Production
 
-Push `main` to GitHub, update the clean checkout on the mail host, and run `scripts/deploy.sh`. The deployment builds candidate UI and API containers, checks their health and authentication behavior, switches the mail hostname routes, then verifies the public UI and API. The script keeps the previous UI/API route available for rollback.
+Push `main` to GitHub, update the clean checkout on the mail host, and run `scripts/deploy.sh`. The deployment builds candidate UI and API containers, checks their health and authentication behavior, provisions and verifies the shared mailboxes against the existing database and Stalwart accounts, switches the mail hostname routes, then verifies the public UI and API. Existing mailbox credentials are reused when they can be recovered; deployment stops without changing credentials if an existing account cannot be linked safely. The script keeps the previous UI/API route available for rollback.
 
 The dedicated Mail API still relies on Identity, PostgreSQL, and Stalwart. Deploy Stalwart and the SMTP relay from the [mail-server repository](https://github.com/hanasandcom/mail-server).

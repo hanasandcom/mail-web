@@ -137,6 +137,11 @@ if ! curl --fail --silent --show-error --max-time 5 http://127.0.0.1:8183/ready 
     compose_api down >/dev/null 2>&1 || true
     exit 1
 fi
+if ! docker exec "$api_container" bun run provision:shared-mailboxes; then
+    echo 'Shared Mailboxes could not be provisioned and verified; keeping the current Mail API active.' >&2
+    compose_api down >/dev/null 2>&1 || true
+    exit 1
+fi
 
 docker rm -f "$candidate" >/dev/null
 docker rm -f "${container}_next" >/dev/null 2>&1 || true
