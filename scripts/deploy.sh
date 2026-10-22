@@ -232,6 +232,11 @@ replacement = f'''    location = /api/auth/sessions {{
         include snippets/proxy-headers.conf;
     }}
 
+    location = /api/auth/sso/start {{
+        proxy_pass http://127.0.0.1:{port};
+        include snippets/proxy-headers.conf;
+    }}
+
     location ^~ /api/auth/ {{
         proxy_pass http://127.0.0.1:{api_port};
         include snippets/proxy-headers.conf;
