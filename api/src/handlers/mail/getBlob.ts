@@ -6,7 +6,9 @@ import { getMailAccess } from '#utils/mail/accounts.ts'
 import { isMailAdminConfigError, isMailServiceConnectionError, mailAdminUnavailablePayload, mailServiceUnavailablePayload } from '#utils/mail/config.ts'
 import { downloadBlob } from '#utils/mail/jmap.ts'
 import { blobResponsePolicy } from '#utils/mail/blobResponsePolicy.ts'
-import { lookupFileHashReputation } from '#utils/mail/urlReputation.ts'
+import { isVirusTotalClear, lookupFileHashReputation } from '#utils/mail/urlReputation.ts'
+
+const MAX_ATTACHMENT_BYTES = 100 * 1024 * 1024
 
 export default async function getMailBlob(req: FastifyRequest, res: FastifyReply) {
     const { valid, id } = await tokenWrapper(req, res)
@@ -20,18 +22,27 @@ export default async function getMailBlob(req: FastifyRequest, res: FastifyReply
     try {
         const access = await getMailAccess(id, params.mailboxUser)
         const response = await downloadBlob(access.username, access.password, params.blobId, params.name)
+        const contentLength = Number(response.headers.get('content-length') || 0)
+        if (contentLength > MAX_ATTACHMENT_BYTES) {
+            await response.body?.cancel()
+            return res.status(413).send({ error: 'This attachment exceeds the VirusTotal scan limit and remains blocked.', code: 'ATTACHMENT_SCAN_LIMIT' })
+        }
         const arrayBuffer = await response.arrayBuffer()
         const bytes = Buffer.from(arrayBuffer)
+        if (bytes.length > MAX_ATTACHMENT_BYTES) {
+            return res.status(413).send({ error: 'This attachment exceeds the VirusTotal scan limit and remains blocked.', code: 'ATTACHMENT_SCAN_LIMIT' })
+        }
+        const sha256 = createHash('sha256').update(bytes).digest('hex')
+        const reputation = await lookupFileHashReputation(sha256).catch(() => ({ provider: 'virustotal' as const, status: 'unavailable' as const }))
+        if (!isVirusTotalClear(reputation)) {
+            return res.status(424).send({ error: 'VirusTotal could not confirm this attachment is clear, so it remains blocked.', code: 'ATTACHMENT_NOT_CLEARED', reputation })
+        }
         const policy = blobResponsePolicy(response.headers.get('content-type') || '', params.name, bytes)
         res.header('Content-Type', policy.contentType)
         res.header('Content-Disposition', policy.contentDisposition)
         res.header('X-Content-Type-Options', policy.nosniff)
         res.header('Content-Security-Policy', policy.contentSecurityPolicy)
-        if (bytes.length <= 100 * 1024 * 1024) {
-            const sha256 = createHash('sha256').update(bytes).digest('hex')
-            const reputation = await lookupFileHashReputation(sha256).catch(() => ({ provider: 'virustotal' as const, status: 'unavailable' as const }))
-            res.header('X-Mail-File-Reputation', JSON.stringify(reputation))
-        }
+        res.header('X-Mail-File-Reputation', JSON.stringify(reputation))
         res.header('Cache-Control', 'private, max-age=60')
         return res.send(bytes)
     } catch (error) {
