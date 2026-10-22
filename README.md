@@ -38,10 +38,14 @@ The staging command starts an isolated PostgreSQL-backed API with synthetic sett
 checks its health, unauthorized-request handling, and dashboard CORS, then removes the
 temporary staging services and volume. It does not use production database or mail data.
 
+To check device-bound sessions against real Identity and PostgreSQL, use a clean Git checkout on the staging Docker host and run `bash scripts/test-device-proof-staging.sh /path/to/identity-git-checkout`. The runner archives the reviewed Mail helper/test and pinned Identity revision from Git, uses the matching immutable Identity runtime dependencies, verifies an unused internal subnet, and creates a disposable database with synthetic credentials. It exercises proof binding, replay rejection, and lost-response handling without opening mailboxes or sending mail, then verifies that its containers and network are absent. Do not upload source archives manually; obtain both repositories through their configured Git remotes.
+
 The Playwright suite creates accounts and sends mail. Run it only against an isolated test API and mail server, never against production mail data.
 
 ## Production
 
 Push `main` to GitHub, update the clean checkout on the mail host, and run `scripts/deploy.sh`. The deployment builds candidate UI and API containers, checks their health and authentication behavior, provisions and verifies the shared mailboxes against the existing database and Stalwart accounts, switches the mail hostname routes, then verifies the public UI and API. Existing mailbox credentials are reused when they can be recovered; deployment stops without changing credentials if an existing account cannot be linked safely. The script keeps the previous UI/API route available for rollback.
+
+For an API-only maintenance release, run `scripts/deploy.sh --api-only` from the same clean `main` checkout. This mode keeps the existing UI and skips mailbox provisioning. It retains the secret checks, shared deployment lock, API health, Identity, Stalwart, Browser, CORS, and OpenResty checks. Only the existing Mail API and auth upstreams switch to the candidate. The previous API container and the printed configuration backup remain available for rollback; failures restore the configuration automatically. The default command still provisions shared mailboxes and releases both UI and API.
 
 The dedicated Mail API still relies on Identity, PostgreSQL, and Stalwart. Deploy Stalwart and the SMTP relay from the [mail-server repository](https://github.com/hanasandcom/mail-server).
