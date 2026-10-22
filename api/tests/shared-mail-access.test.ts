@@ -7,12 +7,17 @@ let principal: { name: string, emails?: string[], secrets?: string[] } | null = 
 let insertedSharedAccount: unknown[] | null = null
 let patchedPrincipal = false
 let createdPrincipal: Record<string, unknown> | null = null
+let decryptableMailSecret: string | null = 'test-secret'
 
 mock.module('../src/utils/db.ts', () => ({ default: async (sql: string, values: unknown[] = []) => {
     if (sql.includes('shared_mail_accounts')) {
         if (sql.trimStart().startsWith('INSERT')) {
             insertedSharedAccount = [...values]
             return { rows: [] }
+        }
+        if (sql.trimStart().startsWith('UPDATE')) {
+            insertedSharedAccount = [...values]
+            return { rows: [], rowCount: 1 }
         }
         mailboxReads += 1
         return { rows: sharedAccountRow ? [sharedAccountRow] : [] }
@@ -27,7 +32,7 @@ mock.module('../src/utils/mail/config.ts', () => ({
     mailConfig: { domain: 'example.test', systemSenderLocalPart: 'noreply', userAliases: new Map() },
 }))
 mock.module('../src/utils/mail/crypto.ts', () => ({
-    tryDecryptMailSecret: () => 'test-secret',
+    tryDecryptMailSecret: () => decryptableMailSecret,
     encryptMailSecret: (secret: string) => `enc:${secret}`,
     generateMailSecret: () => 'test-secret',
 }))
@@ -73,6 +78,7 @@ test('links an existing shared Stalwart account without changing its credential'
     insertedSharedAccount = null
     patchedPrincipal = false
     createdPrincipal = null
+    decryptableMailSecret = 'test-secret'
 
     await provisionSharedMailboxes(['shared:support'])
 
@@ -86,6 +92,7 @@ test('does not invent a credential when an existing shared account cannot reveal
     insertedSharedAccount = null
     patchedPrincipal = false
     createdPrincipal = null
+    decryptableMailSecret = 'test-secret'
 
     await expect(provisionSharedMailboxes(['shared:support'])).rejects.toThrow('no recoverable credential')
     expect(insertedSharedAccount).toBe(null)
@@ -97,9 +104,35 @@ test('creates a missing shared mailbox and stores the same generated credential'
     principal = null
     insertedSharedAccount = null
     createdPrincipal = null
+    decryptableMailSecret = 'test-secret'
 
     await provisionSharedMailboxes(['shared:support'])
 
     expect(insertedSharedAccount).toEqual(['shared:support', 'support', 'support@example.test', 'enc:test-secret'])
     expect(createdPrincipal).toMatchObject({ name: 'support', secrets: ['test-secret'], emails: ['support@example.test'] })
+})
+
+test('repairs an unreadable stored shared credential from the existing Stalwart secret', async () => {
+    sharedAccountRow = { mail_username: 'support', mail_address: 'support@example.test', mail_password_encrypted: 'legacy-ciphertext' }
+    principal = { name: 'support', emails: ['support@example.test'], secrets: ['existing-secret'] }
+    insertedSharedAccount = null
+    patchedPrincipal = false
+    decryptableMailSecret = null
+
+    await provisionSharedMailboxes(['shared:support'])
+
+    expect(insertedSharedAccount).toEqual(['shared:support', 'enc:existing-secret'])
+    expect(patchedPrincipal).toBe(false)
+})
+
+test('does not rotate an unreadable shared credential when Stalwart cannot recover it', async () => {
+    sharedAccountRow = { mail_username: 'support', mail_address: 'support@example.test', mail_password_encrypted: 'legacy-ciphertext' }
+    principal = { name: 'support', emails: ['support@example.test'] }
+    insertedSharedAccount = null
+    patchedPrincipal = false
+    decryptableMailSecret = null
+
+    await expect(provisionSharedMailboxes(['shared:support'])).rejects.toThrow('no recoverable credential')
+    expect(insertedSharedAccount).toBe(null)
+    expect(patchedPrincipal).toBe(false)
 })
