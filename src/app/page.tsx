@@ -13,7 +13,9 @@ type SearchParams = {
 export default async function Page(props: { searchParams: Promise<SearchParams> }) {
     const cookieStore = await cookies()
     const searchParams = await props.searchParams
-    if (!cookieStore.get('id')?.value || !cookieStore.get('access_token')?.value) {
+    const hasSession = Boolean(cookieStore.get('id')?.value
+        && (cookieStore.get('mail_access_token')?.value || cookieStore.get('access_token')?.value))
+    if (!hasSession) {
         const mailboxUser = firstValue(searchParams.mailboxUser)
         const returnTo = safeMailReturnPath(firstValue(searchParams.returnTo)
             || (mailboxUser ? `/?mailboxUser=${encodeURIComponent(mailboxUser)}` : '/'))

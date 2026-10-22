@@ -39,9 +39,12 @@ site can use its same-origin `id` and HttpOnly `access_token` cookies when brows
 JavaScript cannot read the token. Cookie authentication is accepted only on
 `mail.hanasand.com` for same-origin requests; unsafe methods also require the exact
 Mail origin. Both forms are validated through Identity's private session endpoint.
-Rotated cookie sessions stay in an HttpOnly cookie, while bearer clients receive the
-existing refreshed-session headers. Mail requests do not pass through the Hanasand
-frontend or its general-purpose API.
+Rotated cookie sessions stay in a host-only `mail_access_token` HttpOnly cookie,
+while bearer clients receive the existing refreshed-session headers. Mail does not
+overwrite the shared `.hanasand.com` dashboard token. Cookie-authenticated requests
+require the exact Mail Origin (or Fetch Metadata `same-origin` when Origin is absent);
+this also protects overview GETs that can schedule mail rules from cross-origin calls.
+Mail requests do not pass through the Hanasand frontend or its general-purpose API.
 
 Mailbox access follows the existing Hanasand mail policy: a user can open their own
 active mailbox; active internal editors can access eligible user and shared mailboxes.

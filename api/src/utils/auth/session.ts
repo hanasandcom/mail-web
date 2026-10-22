@@ -16,9 +16,10 @@ export async function validateMailSession(req: FastifyRequest, reply: FastifyRep
     const authorization = singleHeader(req.headers.authorization)
     const headerId = singleHeader(req.headers.id)
     const cookieSession = authorization ? null : sessionFromCookies(req)
-    const token = authorization.startsWith('Bearer ') && authorization.length <= 520
+    const bearerToken = authorization.startsWith('Bearer ') && authorization.length <= 520
         ? authorization.slice('Bearer '.length)
-        : cookieSession?.token || ''
+        : ''
+    const token = bearerToken || cookieSession?.token || ''
     const id = cookieSession ? cookieSession.id : headerId
     if (!token || !id || id.length > 200) {
         return null
@@ -29,27 +30,31 @@ export async function validateMailSession(req: FastifyRequest, reply: FastifyRep
         req.log.error('Mail API session validation is not configured.')
         return null
     }
-    let response: Response
-    try {
-        response = await fetch(`${identityUrl}/api/auth/internal/sessions`, {
-            method: 'POST',
-            headers: {
-                Authorization: `Bearer ${serviceToken}`,
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                operation: 'validate',
-                id,
-                token,
-            }),
-            signal: AbortSignal.timeout(5000),
-        })
-    } catch (error) {
-        req.log.warn({ error }, 'Identity session validation failed to connect.')
-        reply.code(503).send({ error: 'Authentication service is temporarily unavailable.' })
-        return null
+
+    const tokens = cookieSession
+        ? [cookieSession.token, cookieSession.fallbackToken].filter((candidate): candidate is string => Boolean(candidate))
+        : [token]
+    let response: Response | undefined
+    for (const [index, candidate] of tokens.entries()) {
+        try {
+            response = await fetch(`${identityUrl}/api/auth/internal/sessions`, {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${serviceToken}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ operation: 'validate', id, token: candidate }),
+                signal: AbortSignal.timeout(5000),
+            })
+        } catch (error) {
+            req.log.warn({ error }, 'Identity session validation failed to connect.')
+            reply.code(503).send({ error: 'Authentication service is temporarily unavailable.' })
+            return null
+        }
+        if (response.status !== 401 || index === tokens.length - 1) break
     }
-    if (response.status === 401) return null
+
+    if (!response || response.status === 401) return null
     if (!response.ok) {
         req.log.warn({ status: response.status }, 'Identity session validation returned an error.')
         reply.code(503).send({ error: 'Authentication service is temporarily unavailable.' })
@@ -83,13 +88,17 @@ function sessionFromCookies(req: FastifyRequest) {
     const cookieHeader = singleHeader(req.headers.cookie)
     if (!cookieHeader || cookieHeader.length > MAX_COOKIE_HEADER_LENGTH) return null
     const id = cookieValue(cookieHeader, 'id')
-    const token = cookieValue(cookieHeader, 'access_token')
+    const mailToken = cookieValue(cookieHeader, 'mail_access_token')
+    const sharedToken = cookieValue(cookieHeader, 'access_token')
+    const token = mailToken === null ? sharedToken : mailToken
     if (!id || id.length > 200 || !token || token.length > 500) return null
-    return { id, token }
+    const fallbackToken = mailToken !== null && sharedToken && sharedToken !== mailToken ? sharedToken : ''
+    return { id, token, fallbackToken }
 }
 
-function cookieValue(header: string, name: string) {
+function cookieValue(header: string, name: string): string | null {
     const values = header.split(';').map(part => part.trim()).filter(part => part.startsWith(`${name}=`))
+    if (values.length === 0) return null
     if (values.length !== 1) return ''
     try { return decodeURIComponent(values[0].slice(name.length + 1)) } catch { return '' }
 }
@@ -99,7 +108,6 @@ function refreshedSessionCookie(req: FastifyRequest, token: string, expiresAt: s
     if (!Number.isFinite(expiry.getTime())) return ''
     const host = singleHeader(req.headers.host).split(':')[0].toLowerCase()
     const forwardedProto = singleHeader(req.headers['x-forwarded-proto']).split(',')[0].trim().toLowerCase()
-    const domain = host === 'mail.hanasand.com' ? '; Domain=.hanasand.com' : ''
     const secure = host === 'mail.hanasand.com' || forwardedProto === 'https' ? '; Secure' : ''
-    return `access_token=${encodeURIComponent(token)}; Expires=${expiry.toUTCString()}; Path=/; HttpOnly; SameSite=Lax${secure}${domain}`
+    return `mail_access_token=${encodeURIComponent(token)}; Expires=${expiry.toUTCString()}; Path=/; HttpOnly; SameSite=Lax${secure}`
 }

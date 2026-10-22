@@ -9,9 +9,10 @@ export function mailApiUrl(path: string) {
 }
 
 export function authHeaders() {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (typeof window !== 'undefined' && window.location.hostname === 'mail.hanasand.com') return headers
     const token = getCookie('access_token')
     const id = getCookie('id')
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
     if (token && id) {
         headers.id = id
         headers.Authorization = `Bearer ${token}`
