@@ -1,6 +1,5 @@
 const nextConfig = {
     output: 'standalone',
-    transpilePackages: ['@hanasand/mail-ui'],
     images: { unoptimized: true },
     experimental: { cpus: 2 },
     async headers() {
