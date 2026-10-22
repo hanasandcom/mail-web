@@ -22,6 +22,10 @@ mock.module('../src/utils/db.ts', () => ({ default: async (sql: string, values: 
         mailboxReads += 1
         return { rows: sharedAccountRow ? [sharedAccountRow] : [] }
     }
+    if (sql.includes('FROM users u')) return { rows: [
+        { id: 'member', name: 'Member', mail_address: 'member@example.test' },
+        { id: 'another-user', name: 'Another User', mail_address: 'another-user@example.test' },
+    ] }
     if (sql.includes('SELECT id, name FROM users')) return { rows: [{ id: 'member', name: 'Member' }] }
     if (sql.includes('FROM mail_accounts')) return { rows: [{ mail_username: 'member', mail_address: 'member@example.test', mail_password_encrypted: 'encrypted' }] }
     return { rows: [] }
@@ -62,9 +66,12 @@ test('personal users cannot enumerate or open shared mailboxes or another user m
 
 test('internal editors can access shared mailboxes while direct customer mailbox access stays denied', async () => {
     internalMember = true
-    expect((await listAccessibleMailAccounts('member')).filter(account => account.shared).map(account => account.id)).toEqual([
+    const accounts = await listAccessibleMailAccounts('member')
+    expect(accounts.map(account => account.id)).toEqual([
+        'member',
         'shared:support', 'shared:sales', 'shared:postmaster', 'shared:security', 'shared:noreply',
     ])
+    expect(accounts.map(account => account.address)).not.toContain('another-user@example.test')
     expect(await getMailAccess('member', 'shared:support')).toMatchObject({ targetUser: 'shared:support', address: 'support@example.test', canSend: true })
     expect(await getMailAccess('member', 'shared:noreply')).toMatchObject({ canSend: true })
     await expect(getMailAccess('member', 'someone-else')).rejects.toThrow('do not have access')
