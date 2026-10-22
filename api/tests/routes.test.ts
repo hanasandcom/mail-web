@@ -23,9 +23,26 @@ test('registers every browser Mail API route on the dedicated service', async ()
         { method: 'POST', url: '/api/mail/filters' },
         { method: 'DELETE', url: '/api/mail/filters/:id' },
         { method: 'GET', url: '/api/mail/blob/:mailboxUser/:blobId/:name' },
+        { method: 'GET', url: '/api/internal/support/mail/inbox' },
+        { method: 'POST', url: '/api/internal/support/mail/send' },
     ] as const
     for (const route of routes) {
         expect(app.hasRoute(route)).toBe(true)
+    }
+})
+
+test('keeps internal Support mail routes behind their service key', async () => {
+    const previousKey = process.env.MAIL_SUPPORT_BRIDGE_KEY
+    delete process.env.MAIL_SUPPORT_BRIDGE_KEY
+    try {
+        const inbox = await app.inject({ method: 'GET', url: '/api/internal/support/mail/inbox' })
+        const send = await app.inject({ method: 'POST', url: '/api/internal/support/mail/send', payload: { to: 'customer@example.com' } })
+        expect(inbox.statusCode).toBe(403)
+        expect(send.statusCode).toBe(403)
+        expect(inbox.json()).toEqual({ error: 'Forbidden' })
+    } finally {
+        if (previousKey === undefined) delete process.env.MAIL_SUPPORT_BRIDGE_KEY
+        else process.env.MAIL_SUPPORT_BRIDGE_KEY = previousKey
     }
 })
 

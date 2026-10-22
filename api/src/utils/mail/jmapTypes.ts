@@ -25,6 +25,9 @@ export type EmailRecord = {
     cc?: MailAddress[]
     bcc?: MailAddress[]
     replyTo?: MailAddress[]
+    messageId?: string[]
+    inReplyTo?: string[]
+    references?: string[]
     hasAttachment?: boolean
     attachments?: Array<{
         blobId: string

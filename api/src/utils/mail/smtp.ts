@@ -20,6 +20,9 @@ export async function sendMailViaSmtp(params: {
     textBody: string
     htmlBody?: string
     attachments?: SmtpAttachment[]
+    messageId?: string
+    inReplyTo?: string
+    references?: string[]
 }) {
     const smtpHost = getInternalSmtpHost()
     const requireTls = shouldRequireTls()
@@ -53,6 +56,9 @@ export async function sendMailViaSmtp(params: {
         subject: params.subject,
         text: params.textBody,
         html: params.htmlBody,
+        messageId: params.messageId,
+        inReplyTo: params.inReplyTo,
+        references: params.references,
         attachments: (params.attachments || []).map(attachment => ({
             filename: attachment.name,
             contentType: attachment.type,

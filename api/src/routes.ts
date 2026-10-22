@@ -8,6 +8,7 @@ import postMailFilter from './handlers/mail/postFilter.ts'
 import deleteMailFilter from './handlers/mail/deleteFilter.ts'
 import getMailBlob from './handlers/mail/getBlob.ts'
 import getMailMessageReputation from './handlers/mail/getMessageReputation.ts'
+import { getSupportInbox, postSupportMail } from './handlers/internal/supportMail.ts'
 
 export async function registerMailRoutes(app: FastifyInstance) {
     app.get('/mail/overview', getMailOverview)
@@ -19,4 +20,6 @@ export async function registerMailRoutes(app: FastifyInstance) {
     app.post('/mail/filters', postMailFilter)
     app.delete('/mail/filters/:id', deleteMailFilter)
     app.get('/mail/blob/:mailboxUser/:blobId/:name', getMailBlob)
+    app.get('/internal/support/mail/inbox', getSupportInbox)
+    app.post('/internal/support/mail/send', postSupportMail)
 }

@@ -33,6 +33,8 @@ Routes are mounted under `/api`:
 | `POST` | `/mail/filters` | Create a mail filter |
 | `DELETE` | `/mail/filters/:id` | Delete a mail filter |
 | `GET` | `/mail/blob/:mailboxUser/:blobId/:name` | Fetch an attachment with safe content headers |
+| `GET` | `/internal/support/mail/inbox` | Read a page of Support Inbox messages over the private service network |
+| `POST` | `/internal/support/mail/send` | Send an idempotent Support reply over the private service network |
 
 The Hanasand dashboard sends `Authorization: Bearer …` and `id`. The standalone Mail
 site can use its same-origin `id` and HttpOnly `access_token` cookies when browser
@@ -65,6 +67,10 @@ database ciphertext has been migrated. These values must match the raw key sourc
 used by the existing mail API; the service derives encryption keys from them the same
 way. No secrets belong in this repository; `.env.example` contains empty placeholders
 only.
+
+`MAIL_SUPPORT_BRIDGE_KEY` is a separate 32-character-or-longer secret shared only
+with Support. It protects the private Support inbox and reply routes; it does not
+replace the encryption key or expose these routes through the public Mail proxy.
 
 ## Container
 
