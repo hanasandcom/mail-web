@@ -321,3 +321,21 @@ test('rejects asserted methods and targets that do not describe the actual Mail 
     }
     expect(calls).toBe(0)
 })
+
+test('never retries a proof that Identity may have consumed before a 503 or connection failure', async () => {
+    for (const failure of ['503', 'connection']) {
+        let calls = 0
+        const sent: unknown[] = []
+        globalThis.fetch = (async () => {
+            calls += 1
+            if (calls > 1) throw new Error('A potentially consumed proof must not be retried')
+            if (failure === 'connection') throw new TypeError('Synthetic connection failure after proof consumption')
+            return new Response(null, { status: 503 })
+        }) as typeof fetch
+        const reply = { code: (status: number) => { expect(status).toBe(503); return reply }, send: (body: unknown) => { sent.push(body); return reply }, header: () => reply } as never
+        const result = await validateMailSession({ method: 'GET', url: '/api/mail/overview', headers: { authorization: 'Bearer session-token', id: 'user', dpop: 'potentially-consumed-proof' }, log: { error() {}, warn() {} } } as never, reply)
+        expect(result).toBeNull()
+        expect(calls).toBe(1)
+        expect(sent).toEqual([{ error: 'Authentication service is temporarily unavailable.' }])
+    }
+})

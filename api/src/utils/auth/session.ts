@@ -73,7 +73,7 @@ export async function validateMailSession(req: FastifyRequest, reply: FastifyRep
                 })
             } catch (error) {
                 const remainingMs = deadline - Date.now()
-                if (attempt === 0 && remainingMs > 0 && !isAbortError(error)) {
+                if (!deviceProof && attempt === 0 && remainingMs > 0 && !isAbortError(error)) {
                     await waitForIdentityRetry(remainingMs)
                     continue
                 }
@@ -82,7 +82,7 @@ export async function validateMailSession(req: FastifyRequest, reply: FastifyRep
                 return null
             }
             const remainingMs = deadline - Date.now()
-            if (response.status >= 500 && attempt === 0 && remainingMs > 0) {
+            if (!deviceProof && response.status >= 500 && attempt === 0 && remainingMs > 0) {
                 await waitForIdentityRetry(remainingMs)
                 continue
             }

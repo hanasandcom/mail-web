@@ -63,6 +63,28 @@ stagingTest('Mail auth boundary with real Identity HTTP, PostgreSQL, P-256 bindi
         expect((await request(bound, proof(bound, { url: 'https://mail.hanasand.com/api/mail/mailboxes', method: 'POST' }), {}, 'POST', '/api/mail/mailboxes')).status).toBe(200)
         const cookie = await fetch(`http://127.0.0.1:${mailAddress.port}/api/mail/overview`, { headers: { host: 'mail.hanasand.com', origin: 'https://mail.hanasand.com', cookie: `id=${id}; access_token=${bound}`, dpop: proof(bound) } })
         expect(cookie.status).toBe(200)
+        // Identity consumes a valid proof, then its response is lost. The adapter must not replay it.
+        const originalFetch = globalThis.fetch
+        for (const failure of ['503', 'connection']) {
+            let validations = 0
+            const priorProofs = (await query('SELECT count(*)::int AS count FROM session_device_proof_jtis')).rows[0].count
+            globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+                const response = await originalFetch(input, init)
+                if (String(input).endsWith('/api/auth/internal/sessions')) {
+                    validations += 1
+                    if (response.status !== 200) throw new Error('Expected a consumed proof before the synthetic failure.')
+                    await response.body?.cancel()
+                    if (failure === 'connection') throw new TypeError('Synthetic lost Identity response')
+                    return new Response(null, { status: 503 })
+                }
+                return response
+            }) as typeof fetch
+            try {
+                expect((await request(bound, proof(bound))).status).toBe(503)
+                expect(validations).toBe(1)
+                expect((await query('SELECT count(*)::int AS count FROM session_device_proof_jtis')).rows[0].count).toBe(priorProofs + 1)
+            } finally { globalThis.fetch = originalFetch }
+        }
         await query('UPDATE users SET active=false WHERE id=$1', [id])
         expect((await request(bound, proof(bound))).status).toBe(401)
         await query('UPDATE users SET active=true,deletion_scheduled_at=NOW() WHERE id=$1', [id])

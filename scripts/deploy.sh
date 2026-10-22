@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+api_only=false
+if [[ ${1:-} == --api-only ]]; then api_only=true; shift; fi
+if [[ $# != 0 ]]; then echo 'Usage: scripts/deploy.sh [--api-only]' >&2; exit 2; fi
+
 repo_root="$(git rev-parse --show-toplevel)"
 revision="$(git -C "$repo_root" rev-parse HEAD)"
 config="${HANASAND_MAIL_NGINX_CONFIG:-/home/hanasand/openresty/nginx/conf.d/default.conf}"
@@ -37,9 +41,11 @@ if [[ ! "$browser_reputation_token" =~ ^[a-f0-9]{64}$ ]]; then
     exit 1
 fi
 
-docker build --pull --build-arg NEXT_PUBLIC_MAIL_API_BASE=https://mail.hanasand.com/api -t "$image" "$repo_root"
-docker rm -f "$candidate" >/dev/null 2>&1 || true
-docker run -d --name "$candidate" --restart unless-stopped --read-only --tmpfs /tmp:rw,noexec,nosuid,size=32m --memory 512m --cpus 1 -p 127.0.0.1:3021:3000 "$image" >/dev/null
+if [[ "$api_only" != true ]]; then
+    docker build --pull --build-arg NEXT_PUBLIC_MAIL_API_BASE=https://mail.hanasand.com/api -t "$image" "$repo_root"
+    docker rm -f "$candidate" >/dev/null 2>&1 || true
+    docker run -d --name "$candidate" --restart unless-stopped --read-only --tmpfs /tmp:rw,noexec,nosuid,size=32m --memory 512m --cpus 1 -p 127.0.0.1:3021:3000 "$image" >/dev/null
+fi
 cleanup() {
     status=$?
     if [[ "$config_changed" == true && -n "$backup" && -f "$backup" ]]; then
@@ -47,17 +53,19 @@ cleanup() {
         docker exec openresty /usr/local/openresty/bin/openresty -t >/dev/null 2>&1 || true
         docker exec openresty /usr/local/openresty/bin/openresty -s reload >/dev/null 2>&1 || true
     fi
-    docker rm -f "$candidate" "${container}_next" >/dev/null 2>&1 || true
+    if [[ "$api_only" != true ]]; then docker rm -f "$candidate" "${container}_next" >/dev/null 2>&1 || true; fi
     if [[ "$finished" != true && -n "$api_project" ]]; then compose_api down >/dev/null 2>&1 || true; fi
-    [[ -z "$backup" ]] || rm -f "$backup"
+    if [[ "$api_only" != true || "$finished" != true ]]; then [[ -z "$backup" ]] || rm -f "$backup"; fi
     exit "$status"
 }
 trap cleanup EXIT
-for attempt in $(seq 1 40); do
-    if curl --fail --silent --show-error --max-time 3 http://127.0.0.1:3021/health | grep -q '"service":"hanasand-mail"'; then break; fi
-    if [[ "$attempt" == 40 ]]; then docker logs "$candidate" >&2; exit 1; fi
-    sleep 2
-done
+if [[ "$api_only" != true ]]; then
+    for attempt in $(seq 1 40); do
+        if curl --fail --silent --show-error --max-time 3 http://127.0.0.1:3021/health | grep -q '"service":"hanasand-mail"'; then break; fi
+        if [[ "$attempt" == 40 ]]; then docker logs "$candidate" >&2; exit 1; fi
+        sleep 2
+    done
+fi
 
 # Build and verify the candidate before waiting on the shared deploy lock.
 # Only the production switch needs to serialize with the main-site proxy reload.
@@ -84,6 +92,10 @@ api = re.search(r'(?m)^\s*location\s+\^~\s+/api/mail/\s*\{[^}]*?proxy_pass\s+htt
 print(web.group(1) if web else '0', api.group(1) if api else '0')
 PYPORT
 )
+if [[ "$api_only" == true && "$active_api_port" != 8085 && "$active_api_port" != 8086 ]]; then
+    echo 'API-only deployment requires an existing Mail API upstream.' >&2
+    exit 1
+fi
 if [[ "$active_port" == 3010 ]]; then port=3011; else port=3010; fi
 if [[ "$active_api_port" == 8085 ]]; then api_port=8086; else api_port=8085; fi
 api_ipv4_address="$(awk -F= -v key="MAIL_API_IPV4_ADDRESS_${api_port}" '$1 == key { sub(/^[^=]*=/, ""); print; exit }' "$production_env")"
@@ -166,28 +178,31 @@ if ! curl --fail --silent --show-error --max-time 5 http://127.0.0.1:8183/ready 
     compose_api down >/dev/null 2>&1 || true
     exit 1
 fi
-if ! docker exec "$api_container" bun run provision:shared-mailboxes; then
-    echo 'Shared Mailboxes could not be provisioned and verified; keeping the current Mail API active.' >&2
-    compose_api down >/dev/null 2>&1 || true
-    exit 1
-fi
+if [[ "$api_only" != true ]]; then
+    if ! docker exec "$api_container" bun run provision:shared-mailboxes; then
+        echo 'Shared Mailboxes could not be provisioned and verified; keeping the current Mail API active.' >&2
+        compose_api down >/dev/null 2>&1 || true
+        exit 1
+    fi
 
-docker rm -f "$candidate" >/dev/null
-docker rm -f "${container}_next" >/dev/null 2>&1 || true
-docker run -d --name "${container}_next" --restart unless-stopped --read-only --tmpfs /tmp:rw,noexec,nosuid,size=32m --memory 512m --cpus 1 -p "127.0.0.1:${port}:3000" "$image" >/dev/null
-for attempt in $(seq 1 40); do
-    if curl --fail --silent --show-error --max-time 3 http://127.0.0.1:"$port"/health | grep -q '"service":"hanasand-mail"'; then break; fi
-    if [[ "$attempt" == 40 ]]; then docker logs "${container}_next" >&2; docker rm -f "${container}_next" >/dev/null; exit 1; fi
-    sleep 2
-done
+    docker rm -f "$candidate" >/dev/null
+    docker rm -f "${container}_next" >/dev/null 2>&1 || true
+    docker run -d --name "${container}_next" --restart unless-stopped --read-only --tmpfs /tmp:rw,noexec,nosuid,size=32m --memory 512m --cpus 1 -p "127.0.0.1:${port}:3000" "$image" >/dev/null
+    for attempt in $(seq 1 40); do
+        if curl --fail --silent --show-error --max-time 3 http://127.0.0.1:"$port"/health | grep -q '"service":"hanasand-mail"'; then break; fi
+        if [[ "$attempt" == 40 ]]; then docker logs "${container}_next" >&2; docker rm -f "${container}_next" >/dev/null; exit 1; fi
+        sleep 2
+    done
+fi
 
 backup="$(mktemp "${config}.mail-backup.XXXXXX")"
 cp -p "$config" "$backup"
 config_changed=true
-python3 - "$config" "$port" "$api_port" <<'PY'
+python3 - "$config" "$port" "$api_port" "$api_only" "$active_api_port" <<'PY'
 from pathlib import Path
 import re, sys
 path, port, api_port = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
+api_only = sys.argv[4] == 'true'
 text = path.read_text()
 matches = []
 for start in re.finditer(r'(?m)^server\s*\{', text):
@@ -201,6 +216,13 @@ for start in re.finditer(r'(?m)^server\s*\{', text):
             break
 if len(matches) != 1: raise SystemExit('Expected exactly one mail.hanasand.com server block.')
 start, end, block = matches[0]
+if api_only:
+    for route in (r'/api/auth/', r'/api/mail/'):
+        pattern = rf'(?m)(^\s*location\s+\^~\s+{re.escape(route)}\s*\{{[^}}]*?proxy_pass\s+http://127\.0\.0\.1:){re.escape(sys.argv[5])}(\s*;)'
+        block, count = re.subn(pattern, lambda match: match.group(1) + api_port + match.group(2), block)
+        if count != 1: raise SystemExit('Expected exactly one existing Mail API and auth upstream.')
+    path.write_text(text[:start] + block + text[end:])
+    raise SystemExit(0)
 for route in (r'/api/auth/', r'/api/mail/', r'/api/backend/mail/'):
     block, _ = re.subn(rf'(?ms)^\s*location\s+\^~\s+{re.escape(route)}\s*\{{.*?^\s*\}}\s*', '', block)
 block, _ = re.subn(r'(?ms)^\s*location\s*=\s*/api/auth/sessions\s*\{.*?^\s*\}\s*', '', block)
@@ -254,7 +276,7 @@ if ! docker exec openresty /usr/local/openresty/bin/openresty -T 2>&1 \
     cp -p "$backup" "$config"
     docker exec openresty /usr/local/openresty/bin/openresty -t >/dev/null
     docker exec openresty /usr/local/openresty/bin/openresty -s reload >/dev/null
-    docker rm -f "${container}_next" >/dev/null 2>&1 || true
+    if [[ "$api_only" != true ]]; then docker rm -f "${container}_next" >/dev/null 2>&1 || true; fi
     compose_api down >/dev/null 2>&1 || true
     exit 1
 fi
@@ -270,7 +292,7 @@ if [[ "$mail_route_ready" != true ]]; then
     cp -p "$backup" "$config"
     docker exec openresty /usr/local/openresty/bin/openresty -t >/dev/null
     docker exec openresty /usr/local/openresty/bin/openresty -s reload >/dev/null
-    docker rm -f "${container}_next" >/dev/null 2>&1 || true
+    if [[ "$api_only" != true ]]; then docker rm -f "${container}_next" >/dev/null 2>&1 || true; fi
     exit 1
 fi
 if ! wait_for_mail_status 401 https://mail.hanasand.com:8443/api/mail/overview; then
@@ -281,7 +303,7 @@ if ! wait_for_mail_status 401 https://mail.hanasand.com:8443/api/mail/overview; 
     cp -p "$backup" "$config"
     docker exec openresty /usr/local/openresty/bin/openresty -t >/dev/null
     docker exec openresty /usr/local/openresty/bin/openresty -s reload >/dev/null
-    docker rm -f "${container}_next" >/dev/null 2>&1 || true
+    if [[ "$api_only" != true ]]; then docker rm -f "${container}_next" >/dev/null 2>&1 || true; fi
     compose_api down >/dev/null 2>&1 || true
     exit 1
 fi
@@ -296,7 +318,7 @@ if ! grep -q 'Hanasand Mail' <<<"$mail_root" \
     cp -p "$backup" "$config"
     docker exec openresty /usr/local/openresty/bin/openresty -t >/dev/null
     docker exec openresty /usr/local/openresty/bin/openresty -s reload >/dev/null
-    docker rm -f "${container}_next" >/dev/null 2>&1 || true
+    if [[ "$api_only" != true ]]; then docker rm -f "${container}_next" >/dev/null 2>&1 || true; fi
     compose_api down >/dev/null 2>&1 || true
     exit 1
 fi
@@ -312,7 +334,7 @@ if [[ "$auth_sso_status" != 303 && "$auth_sso_status" != 503 ]]; then
     cp -p "$backup" "$config"
     docker exec openresty /usr/local/openresty/bin/openresty -t >/dev/null
     docker exec openresty /usr/local/openresty/bin/openresty -s reload >/dev/null
-    docker rm -f "${container}_next" >/dev/null 2>&1 || true
+    if [[ "$api_only" != true ]]; then docker rm -f "${container}_next" >/dev/null 2>&1 || true; fi
     compose_api down >/dev/null 2>&1 || true
     exit 1
 fi
@@ -323,7 +345,7 @@ if ! wait_for_mail_status 401 "$identity_url"; then
     cp -p "$backup" "$config"
     docker exec openresty /usr/local/openresty/bin/openresty -t >/dev/null
     docker exec openresty /usr/local/openresty/bin/openresty -s reload >/dev/null
-    docker rm -f "${container}_next" >/dev/null 2>&1 || true
+    if [[ "$api_only" != true ]]; then docker rm -f "${container}_next" >/dev/null 2>&1 || true; fi
     compose_api down >/dev/null 2>&1 || true
     exit 1
 fi
@@ -345,18 +367,24 @@ if [[ "$cors_allowed" != true ]]; then
     cp -p "$backup" "$config"
     docker exec openresty /usr/local/openresty/bin/openresty -t >/dev/null
     docker exec openresty /usr/local/openresty/bin/openresty -s reload >/dev/null
-    docker rm -f "${container}_next" >/dev/null 2>&1 || true
+    if [[ "$api_only" != true ]]; then docker rm -f "${container}_next" >/dev/null 2>&1 || true; fi
     compose_api down >/dev/null 2>&1 || true
     exit 1
 fi
-docker rm -f "$container" >/dev/null 2>&1 || true
-docker rename "${container}_next" "$container"
-if [[ "$active_api_port" != 0 ]]; then
-    old_api_project="hanasand-mail-api-${active_api_port}"
-    sleep 5
-    old_api_ipv4_address="$(awk -F= -v key="MAIL_API_IPV4_ADDRESS_${active_api_port}" '$1 == key { sub(/^[^=]*=/, ""); print; exit }' "$production_env")"
-    compose_api_for "$active_api_port" "$old_api_ipv4_address" "$old_api_project" down >/dev/null 2>&1 || true
+if [[ "$api_only" != true ]]; then
+    docker rm -f "$container" >/dev/null 2>&1 || true
+    docker rename "${container}_next" "$container"
+    if [[ "$active_api_port" != 0 ]]; then
+        old_api_project="hanasand-mail-api-${active_api_port}"
+        sleep 5
+        old_api_ipv4_address="$(awk -F= -v key="MAIL_API_IPV4_ADDRESS_${active_api_port}" '$1 == key { sub(/^[^=]*=/, ""); print; exit }' "$production_env")"
+        compose_api_for "$active_api_port" "$old_api_ipv4_address" "$old_api_project" down >/dev/null 2>&1 || true
+    fi
 fi
 finished=true
 config_changed=false
-printf 'Deployed %s: standalone mail UI and dedicated Mail API are live on mail.hanasand.com.\n' "$revision"
+if [[ "$api_only" == true ]]; then
+    printf 'Deployed %s: dedicated Mail API is live; UI unchanged, previous API retained on port %s; rollback config %s.\n' "$revision" "$active_api_port" "$backup"
+else
+    printf 'Deployed %s: standalone mail UI and dedicated Mail API are live on mail.hanasand.com.\n' "$revision"
+fi
