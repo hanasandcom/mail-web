@@ -30,7 +30,9 @@ mock.module('../src/utils/db.ts', () => ({ default: async (sql: string, values: 
     if (sql.includes('FROM mail_accounts')) return { rows: [{ mail_username: 'member', mail_address: 'member@example.test', mail_password_encrypted: 'encrypted' }] }
     return { rows: [] }
 } }))
-mock.module('../src/utils/auth/organizationPageAccess.ts', () => ({ hasHanasandInternalPageAccess: async (id: string) => internalMember && id === 'member' }))
+mock.module('../src/utils/auth/organizationPageAccess.ts', () => ({
+    hasHanasandInternalPageAccess: async (id: string) => internalMember && ['member', 'internal-colleague'].includes(id),
+}))
 mock.module('../src/utils/mail/config.ts', () => ({
     requireMailAdminConfig: () => { throw new Error('unused') },
     mailConfig: { domain: 'example.test', systemSenderLocalPart: 'noreply', userAliases: new Map(), userAddresses: new Map() },
@@ -64,7 +66,7 @@ test('personal users cannot enumerate or open shared mailboxes or another user m
     expect(mailboxReads).toBe(0)
 })
 
-test('internal editors can access shared mailboxes while direct customer mailbox access stays denied', async () => {
+test('internal editors can access shared mailboxes but never another personal mailbox', async () => {
     internalMember = true
     const accounts = await listAccessibleMailAccounts('member')
     expect(accounts.map(account => account.id)).toEqual([
@@ -75,6 +77,7 @@ test('internal editors can access shared mailboxes while direct customer mailbox
     expect(await getMailAccess('member', 'shared:support')).toMatchObject({ targetUser: 'shared:support', address: 'support@example.test', canSend: true })
     expect(await getMailAccess('member', 'shared:noreply')).toMatchObject({ canSend: true })
     await expect(getMailAccess('member', 'someone-else')).rejects.toThrow('do not have access')
+    await expect(getMailAccess('member', 'internal-colleague')).rejects.toThrow('do not have access')
     internalMember = false
     await expect(getMailAccess('member', 'shared:support')).rejects.toThrow('do not have access')
 })

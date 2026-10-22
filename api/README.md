@@ -48,10 +48,12 @@ require the exact Mail Origin (or Fetch Metadata `same-origin` when Origin is ab
 this also protects overview GETs that can schedule mail rules from cross-origin calls.
 Mail requests do not pass through the Hanasand frontend or its general-purpose API.
 
-Mailbox access follows the existing Hanasand mail policy: a user can open their own
-active mailbox; active internal editors can access eligible user and shared mailboxes.
-Shared `noreply` send access remains separately restricted. Mailbox credentials stay
-server-side and are decrypted with the configured service key and compatibility keys.
+Mailbox access is limited to the signed-in user's own active personal mailbox. Active
+internal editors can also access the explicitly shared mailboxes, but cannot open or
+enumerate another user's personal mailbox. A `mailboxUser` value may therefore name
+the signed-in user or an eligible shared mailbox only. Shared `noreply` send access
+remains separately restricted. Mailbox credentials stay server-side and are decrypted
+with the configured service key and compatibility keys.
 
 ## Runtime settings
 

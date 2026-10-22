@@ -29,7 +29,8 @@ export async function getMailAccess(actorId: string, mailboxUser?: string) {
         const account = await sharedMailAccess(targetUser)
         return { actorId, targetUser, canAccessAnyMailbox, ...account, canSend: targetUser !== 'shared:noreply' || permissions.admin }
     }
-    if (targetUser !== actorId && (!canAccessAnyMailbox || !(await mailPermissions(targetUser)).shared)) {
+    // Organization access grants access to shared mailboxes, never another user's personal inbox.
+    if (targetUser !== actorId) {
         throw new MailAccessDenied()
     }
 
