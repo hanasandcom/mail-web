@@ -288,10 +288,10 @@ fi
 mail_root="$(curl_local_mail --fail --silent --show-error --max-time 5 https://mail.hanasand.com:8443/ || true)"
 if ! grep -q 'Hanasand Mail' <<<"$mail_root" \
     || ! grep -q 'hanasand-login-form' <<<"$mail_root" \
-    || ! grep -q 'login-form.js' <<<"$mail_root" \
     || ! grep -q 'passkey-options-url' <<<"$mail_root" \
     || ! grep -q 'passkey-verify-url' <<<"$mail_root" \
-    || ! grep -q 'sso-href' <<<"$mail_root"; then
+    || ! grep -q 'sso-href' <<<"$mail_root" \
+    || grep -q 'api.hanasand.com/api/auth/login-form.js' <<<"$mail_root"; then
     echo 'Standalone mail root did not render the shared Identity sign-in form and its password, passkey, and SSO routes; rolling back.' >&2
     cp -p "$backup" "$config"
     docker exec openresty /usr/local/openresty/bin/openresty -t >/dev/null
