@@ -278,8 +278,13 @@ if ! grep -q 'Hanasand Mail' <<<"$mail_root" \
     compose_api down >/dev/null 2>&1 || true
     exit 1
 fi
-auth_sso_status="$(curl_local_mail --silent --show-error --max-time 8 --output /dev/null --write-out '%{http_code}' \
-    'https://mail.hanasand.com:8443/api/auth/sso/start?redirectPath=%2F' || true)"
+auth_sso_status=""
+for attempt in $(seq 1 20); do
+    auth_sso_status="$(curl_local_mail --silent --show-error --max-time 8 --output /dev/null --write-out '%{http_code}' \
+        'https://mail.hanasand.com:8443/api/auth/sso/start?redirectPath=%2F' || true)"
+    if [[ "$auth_sso_status" == 303 || "$auth_sso_status" == 503 ]]; then break; fi
+    sleep 1
+done
 if [[ "$auth_sso_status" != 303 && "$auth_sso_status" != 503 ]]; then
     echo "Mail auth route returned HTTP ${auth_sso_status:-no response} for SSO start; expected an Identity redirect or unconfigured-provider response; rolling back." >&2
     cp -p "$backup" "$config"
