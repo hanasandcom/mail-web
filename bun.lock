@@ -5,8 +5,8 @@
     "": {
       "name": "hanasand-mail",
       "dependencies": {
-        "hanasand": "^1.0.0",
         "fflate": "0.8.3",
+        "hanasand": "1.0.3",
         "lucide-react": "^1.8.0",
         "next": "16.2.4",
         "react": "19.2.5",
@@ -28,8 +28,6 @@
     "@alloc/quick-lru": ["@alloc/quick-lru@5.3.0", "", {}, "sha512-U4+70Pc5ZS9osnCBCE5Jha/ciHM+Yp+CNMNC/7HvYbNRk1Ldd+f7qO65W5qfhu/TCv+/ozljlXXe9Nj8419DMA=="],
 
     "@emnapi/runtime": ["@emnapi/runtime@1.11.3", "", { "dependencies": { "tslib": "^2.4.0" } }, "sha512-Xz4Tpyki7XyrpbUK1jR1AhdAdaXyhhY4lZ3neLodmhpuWfy2PAQN5B46sAiU4liOXGLkHypn/qU+jvfWSCYYLA=="],
-
-    "hanasand": ["hanasand@1.0.1", "", {"dependencies":{"fflate":"^0.8.3"},"peerDependencies":{"react":">=19 <20","react-dom":">=19 <20","lucide-react":">=1","@types/react":">=19 <20","@types/react-dom":">=19 <20"},"peerDependenciesMeta":{"react-dom":{"optional":true},"lucide-react":{"optional":true},"@types/react-dom":{"optional":true}}}, "sha512-8RzRGx8dKwwrb1KZ3jCg/Sxp3Jdg4LR/3iP8MrgF7Eq8cg6+Wk4PkywpOj6krL81vH5lFE1qP6AXuuy+s9FqGg=="],
 
     "@img/colour": ["@img/colour@1.1.0", "", {}, "sha512-Td76q7j57o/tLVdgS746cYARfSyxk8iEfRxewL9h4OMzYhbW4TAcppl0mT4eyqXddh6L/jwoM75mo7ixa/pCeQ=="],
 
@@ -164,6 +162,8 @@
     "fflate": ["fflate@0.8.3", "", {}, "sha512-tbZNuJrLwGUp3zshBtdy4W+ORxZuIh8a5ilyIEQDC5rY1f3U20JMry0Ll3WBzU58EZKsEuJFXhb5gwv8CsPvgA=="],
 
     "graceful-fs": ["graceful-fs@4.2.11", "", {}, "sha512-RbJ5/jmFcNNCcDV5o9eTnBLJ/HszWV0P73bc+Ff4nS/rJj+YaS6IGyiOL0VoBYX+l1Wrl3k63h/KrH+nhJ0XvQ=="],
+
+    "hanasand": ["hanasand@1.0.3", "", { "dependencies": { "fflate": "^0.8.3" }, "peerDependencies": { "@types/react": ">=19 <20", "@types/react-dom": ">=19 <20", "lucide-react": ">=1", "react": ">=19 <20", "react-dom": ">=19 <20" }, "optionalPeers": ["@types/react-dom", "lucide-react", "react-dom"] }, "sha512-W/zeinFCwjJZ3Atrzx7ksBZJ3OP4VKupgNj0JJ/bwYf0+kOoC+hGBTNUoHYhB9gDDxia5hk/3Z3R8umlZhzqxg=="],
 
     "jiti": ["jiti@2.7.0", "", { "bin": { "jiti": "lib/jiti-cli.mjs" } }, "sha512-AC/7JofJvZGrrneWNaEnJeOLUx+JlGt7tNa0wZiRPT4MY1wmfKjt2+6O2p2uz2+skll8OZZmJMNqeke7kKbNgQ=="],
 
