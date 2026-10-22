@@ -12,6 +12,7 @@ Standalone webmail for [mail.hanasand.com](https://mail.hanasand.com). The Hanas
 The standalone host serves its own UI at `/`, Identity routes at `/api/auth/*`, and the Mail API at `/api/mail/*`. The dashboard calls `https://mail.hanasand.com/api` directly from the browser. Identity validates the user's session for the dedicated Mail API. Identity and the existing account database remain shared dependencies; mail requests do not depend on the main Hanasand API or frontend.
 
 Changes to the shared React workspace must be released through the `hanasand` package and then adopted here through the lockfile. API and standalone-app changes belong in this repository.
+`MAIL_USER_ALIASES` changes the Stalwart login name for a specific Identity user. `MAIL_USER_ADDRESSES` changes that user's primary sending address while preserving the previous address as an alias to the same mailbox. Use `user-id:address` entries separated by commas; deployment verifies each configured address before it switches traffic.
 
 ## Local development
 

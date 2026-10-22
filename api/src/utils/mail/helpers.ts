@@ -6,11 +6,13 @@ export function mailboxLocalPartForUser(userId: string) {
 }
 
 export function addressForUser(userId: string) {
-    return `${mailboxLocalPartForUser(userId)}@${mailConfig.domain}`
+    return mailConfig.userAddresses.get(userId) || `${mailboxLocalPartForUser(userId)}@${mailConfig.domain}`
 }
 
 export function addressesForUser(userId: string) {
     const addresses = new Set<string>([addressForUser(userId)])
+    const previousAddress = `${mailboxLocalPartForUser(userId)}@${mailConfig.domain}`
+    if (previousAddress !== addressForUser(userId)) addresses.add(previousAddress)
     if (userId === mailConfig.systemMailboxOwner) {
         for (const localPart of mailConfig.systemAliasLocalParts) {
             addresses.add(`${localPart}@${mailConfig.domain}`)

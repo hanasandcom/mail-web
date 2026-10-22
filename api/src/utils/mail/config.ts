@@ -24,6 +24,22 @@ const mailUserAliases = new Map(
             return [userId, mailboxUser || userId]
         })
 )
+const mailUserAddresses = new Map(
+    (process.env.MAIL_USER_ADDRESSES || '')
+        .split(',')
+        .map(entry => entry.trim())
+        .filter(Boolean)
+        .map(entry => {
+            const [userId, address, ...extra] = entry.split(':').map(value => value.trim())
+            if (!userId || !address || extra.length || !/^[^\s@]+@[^\s@]+$/.test(address)) {
+                throw new Error('MAIL_USER_ADDRESSES entries must use user-id:address format.')
+            }
+            if (address.split('@')[1]?.toLowerCase() !== mailDomain.toLowerCase()) {
+                throw new Error(`MAIL_USER_ADDRESSES addresses must use ${mailDomain}.`)
+            }
+            return [userId, address.toLowerCase()]
+        })
+)
 const systemMailboxOwner = process.env.MAIL_SYSTEM_MAILBOX_USER || 'eirikhanasand'
 const systemAliasLocalParts = [...new Set([
     systemSenderLocalPart,
@@ -49,6 +65,7 @@ export const mailConfig = {
     systemSenderLocalPart,
     systemAliasLocalParts,
     userAliases: mailUserAliases,
+    userAddresses: mailUserAddresses,
 }
 
 export function requireMailAdminConfig() {
