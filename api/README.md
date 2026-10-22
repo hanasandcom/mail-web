@@ -24,6 +24,10 @@ Routes are mounted under `/api`:
 
 | Method | Route | Purpose |
 | --- | --- | --- |
+| `POST` | `/auth/login` | Proxy username/password sign-in to Identity |
+| `GET` | `/auth/passkeys/authenticate/options` | Proxy passkey request options to Identity |
+| `POST` | `/auth/passkeys/authenticate/verify` | Proxy passkey verification to Identity |
+| `GET` | `/auth/sso/start` | Start Identity SSO and forward its browser-binding cookie |
 | `GET` | `/mail/overview` | Mailbox list, message page or selected message; accepts `mailboxUser`, `mailboxId`, `messageId`, `after`, and `unreadOnly` query values |
 | `GET` | `/mail/search` | Search a mailbox; accepts `mailboxUser`, `mailboxId`, `query`, and `after` |
 | `POST` | `/mail/send` | Send a message; requires an `Idempotency-Key` header |
@@ -36,7 +40,9 @@ Routes are mounted under `/api`:
 | `GET` | `/internal/support/mail/inbox` | Read a page of Support Inbox messages over the private service network |
 | `POST` | `/internal/support/mail/send` | Send an idempotent Support reply over the private service network |
 
-The Hanasand dashboard sends `Authorization: Bearer …` and `id`. The standalone Mail
+Identity owns password, passkey, and SSO verification. The Mail API exposes same-origin
+proxy routes for those flows; it does not verify credentials or passkeys itself. The
+Hanasand dashboard sends `Authorization: Bearer …` and `id`. The standalone Mail
 site can use its same-origin `id` and HttpOnly `access_token` cookies when browser
 JavaScript cannot read the token. Cookie authentication is accepted only on
 `mail.hanasand.com` for same-origin requests; unsafe methods also require the exact

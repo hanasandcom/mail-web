@@ -9,8 +9,13 @@ import deleteMailFilter from './handlers/mail/deleteFilter.ts'
 import getMailBlob from './handlers/mail/getBlob.ts'
 import getMailMessageReputation from './handlers/mail/getMessageReputation.ts'
 import { getSupportInbox, postSupportMail } from './handlers/internal/supportMail.ts'
+import { getPasskeyOptions, getSsoStart, postIdentityLogin, postPasskeyVerify } from './handlers/auth.ts'
 
 export async function registerMailRoutes(app: FastifyInstance) {
+    app.post('/auth/login', postIdentityLogin)
+    app.get('/auth/passkeys/authenticate/options', getPasskeyOptions)
+    app.post('/auth/passkeys/authenticate/verify', postPasskeyVerify)
+    app.get('/auth/sso/start', getSsoStart)
     app.get('/mail/overview', getMailOverview)
     app.get('/mail/search', getMailSearch)
     app.post('/mail/send', postSendMail)
