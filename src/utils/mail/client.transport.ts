@@ -11,8 +11,12 @@ export function mailApiUrl(path: string) {
 export function authHeaders() {
     const token = getCookie('access_token')
     const id = getCookie('id')
-    if (!token || !id) return null
-    return { 'Content-Type': 'application/json', id, Authorization: `Bearer ${token}` }
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (token && id) {
+        headers.id = id
+        headers.Authorization = `Bearer ${token}`
+    }
+    return headers
 }
 
 export async function request<T>(path: string, init: RequestInit) {
@@ -24,7 +28,6 @@ export async function request<T>(path: string, init: RequestInit) {
 
 export async function postJson(path: string, body: Record<string, unknown>, extraHeaders: Record<string, string> = {}) {
     const headers = authHeaders()
-    if (!headers) throw new Error('Unauthorized.')
     return request(path, {
         method: 'POST',
         headers: { ...headers, ...extraHeaders },
@@ -40,7 +43,7 @@ export async function fetchWithTimeout(input: RequestInfo | URL, init: RequestIn
     else callerSignal?.addEventListener('abort', abortForCaller, { once: true })
     const timeout = window.setTimeout(() => controller.abort(), timeoutMs)
     try {
-        const response = await fetch(input, { ...init, cache: 'no-store', signal: controller.signal })
+        const response = await fetch(input, { credentials: 'same-origin', ...init, cache: 'no-store', signal: controller.signal })
         refreshAccessToken(response)
         redirectForReauthentication(response)
         return response

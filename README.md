@@ -21,7 +21,7 @@ bun run dev
 cd api && bun install && bun run dev
 ```
 
-Set `NEXT_PUBLIC_MAIL_API_BASE` in `.env.local` to the API origin and path you want the browser to call. It defaults to `/api`, which is same-origin in production. The API settings are listed in [`api/.env.example`](api/.env.example); do not use production credentials in local development.
+Set `NEXT_PUBLIC_MAIL_API_BASE` in `.env.local` to the API origin and path you want the browser to call. It defaults to `/api`; keep this same-origin for the standalone app so HttpOnly session cookies reach the Mail API. The dashboard uses its separate bearer-token client. The API settings are listed in [`api/.env.example`](api/.env.example); do not use production credentials in local development.
 
 ## Checks
 

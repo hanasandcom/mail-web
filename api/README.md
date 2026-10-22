@@ -34,10 +34,14 @@ Routes are mounted under `/api`:
 | `DELETE` | `/mail/filters/:id` | Delete a mail filter |
 | `GET` | `/mail/blob/:mailboxUser/:blobId/:name` | Fetch an attachment with safe content headers |
 
-The browser sends `Authorization: Bearer …` and `id`. This service validates the
-session through Identity's private session endpoint and returns refreshed session
-headers when needed. Mail requests do not pass through the Hanasand frontend or its
-general-purpose API.
+The Hanasand dashboard sends `Authorization: Bearer …` and `id`. The standalone Mail
+site can use its same-origin `id` and HttpOnly `access_token` cookies when browser
+JavaScript cannot read the token. Cookie authentication is accepted only on
+`mail.hanasand.com` for same-origin requests; unsafe methods also require the exact
+Mail origin. Both forms are validated through Identity's private session endpoint.
+Rotated cookie sessions stay in an HttpOnly cookie, while bearer clients receive the
+existing refreshed-session headers. Mail requests do not pass through the Hanasand
+frontend or its general-purpose API.
 
 Mailbox access follows the existing Hanasand mail policy: a user can open their own
 active mailbox; active internal editors can access eligible user and shared mailboxes.

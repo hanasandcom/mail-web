@@ -6,7 +6,6 @@ import { normalizeMailOverview } from './client.normalize'
 
 export async function fetchMailOverview(params: { mailboxUser?: string, mailboxId?: string | null, messageId?: string | null, after?: string } = {}) {
     const headers = authHeaders()
-    if (!headers) throw new Error('Unauthorized.')
     const search = new URLSearchParams()
     if (params.mailboxUser) search.set('mailboxUser', params.mailboxUser)
     if (params.mailboxId) search.set('mailboxId', params.mailboxId)
@@ -20,7 +19,6 @@ export async function fetchMailOverview(params: { mailboxUser?: string, mailboxI
 
 export async function searchMail(params: { mailboxUser: string, mailboxId: string, query: string, after?: string }) {
     const headers = authHeaders()
-    if (!headers) throw new Error('Unauthorized.')
     const search = new URLSearchParams({ mailboxUser: params.mailboxUser, mailboxId: params.mailboxId, query: params.query })
     if (params.after) search.set('after', params.after)
     const response = await fetchWithTimeout(mailApiUrl(`/mail/search?${search}`), { headers }, 15_000)
@@ -31,7 +29,6 @@ export async function searchMail(params: { mailboxUser: string, mailboxId: strin
 
 export async function fetchMailRemoteContent(params: { mailboxUser: string, messageId: string }) {
     const headers = authHeaders()
-    if (!headers) throw new Error('Unauthorized.')
     const query = new URLSearchParams({ mailboxUser: params.mailboxUser })
     const response = await fetchWithTimeout(mailApiUrl(`/mail/message/${encodeURIComponent(params.messageId)}/reputation?${query}`), { headers }, 15_000)
     const payload = await response.json().catch(() => ({})) as { error?: string, messageId?: string, remoteUrls?: MailRemoteUrl[], attachments?: MailAttachmentReputation[] }
@@ -53,7 +50,6 @@ export async function fetchMailRemoteContent(params: { mailboxUser: string, mess
 
 export async function fetchHasUnreadMail() {
     const headers = authHeaders()
-    if (!headers) throw new Error('Unauthorized.')
     const response = await fetchWithTimeout(mailApiUrl('/mail/overview?unreadOnly=true'), { headers }, 7_000)
     const payload = await response.json().catch(() => null) as { error?: string, accessibleAccounts?: Array<{ unreadCount?: number | null }> } | null
     if (!response.ok) throw new Error(payload?.error || 'Mail is unavailable right now.')

@@ -39,7 +39,6 @@ export function createFilter(body: {
 
 export async function deleteFilter(id: number, mailboxUser?: string) {
     const headers = authHeaders()
-    if (!headers) throw new Error('Unauthorized.')
     const search = mailboxUser ? `?mailboxUser=${encodeURIComponent(mailboxUser)}` : ''
     const response = await fetchWithTimeout(mailApiUrl(`/mail/filters/${id}${search}`), { method: 'DELETE', headers }, 15_000)
     if (!response.ok) {
