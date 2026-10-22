@@ -4,6 +4,8 @@ import type { MailAttachmentReputation, MailOverview, MailRemoteUrl } from './ty
 import { authHeaders, fetchWithTimeout, mailApiUrl } from './client.transport'
 import { normalizeMailOverview } from './client.normalize'
 
+const MAIL_REPUTATION_TIMEOUT_MS = 60_000
+
 export async function fetchMailOverview(params: { mailboxUser?: string, mailboxId?: string | null, messageId?: string | null, after?: string } = {}) {
     const headers = authHeaders()
     const search = new URLSearchParams()
@@ -30,7 +32,7 @@ export async function searchMail(params: { mailboxUser: string, mailboxId: strin
 export async function fetchMailRemoteContent(params: { mailboxUser: string, messageId: string }) {
     const headers = authHeaders()
     const query = new URLSearchParams({ mailboxUser: params.mailboxUser })
-    const response = await fetchWithTimeout(mailApiUrl(`/mail/message/${encodeURIComponent(params.messageId)}/reputation?${query}`), { headers }, 15_000)
+    const response = await fetchWithTimeout(mailApiUrl(`/mail/message/${encodeURIComponent(params.messageId)}/reputation?${query}`), { headers }, MAIL_REPUTATION_TIMEOUT_MS)
     const payload = await response.json().catch(() => ({})) as { error?: string, messageId?: string, remoteUrls?: MailRemoteUrl[], attachments?: MailAttachmentReputation[] }
     if (!response.ok) throw new Error(payload.error || 'Unable to check remote email images.')
     if (payload.messageId !== params.messageId || !Array.isArray(payload.remoteUrls)) throw new Error('Remote email image status is unavailable.')
