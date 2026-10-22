@@ -180,6 +180,38 @@ test('falls back to the shared session after a stale Mail-scoped token is reject
     expect(seen).toEqual(['stale-mail-token', 'current-dashboard-token'])
 })
 
+test('bounds all Identity attempts to one session-validation budget', async () => {
+    let calls = 0
+    const sent: unknown[] = []
+    globalThis.fetch = (async (_input, init) => {
+        calls += 1
+        if (calls === 1) return new Response(null, { status: 401 })
+        return new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener('abort', () => reject(new Error('Identity timed out')), { once: true })
+        })
+    }) as typeof fetch
+    const reply = {
+        code: (status: number) => { expect(status).toBe(503); return reply },
+        send: (payload: unknown) => { sent.push(payload); return reply },
+        header: () => reply,
+    } as never
+    const startedAt = Date.now()
+    const result = await validateMailSession({
+        method: 'GET', url: '/api/mail/overview',
+        headers: {
+            host: 'mail.hanasand.com',
+            cookie: 'id=user; mail_access_token=stale-mail-token; access_token=current-dashboard-token',
+            origin: 'https://mail.hanasand.com',
+        },
+        log: { error() {}, warn() {} },
+    } as never, reply)
+
+    expect(result).toBeNull()
+    expect(calls).toBe(2)
+    expect(Date.now() - startedAt).toBeLessThan(5500)
+    expect(sent).toEqual([{ error: 'Authentication service is temporarily unavailable.' }])
+})
+
 test('rejects ambiguous duplicate session cookies instead of choosing one', async () => {
     let calls = 0
     globalThis.fetch = (async () => {
