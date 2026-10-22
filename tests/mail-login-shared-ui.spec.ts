@@ -1,5 +1,15 @@
 import { expect, test } from '@playwright/test'
 
+test('Mail login controls are present in the server-rendered page', async ({ page }) => {
+    const response = await page.goto('/?returnTo=%2Finbox')
+    const html = await response?.text() || ''
+
+    expect(html).toContain('name="username"')
+    expect(html).toContain('name="password"')
+    expect(html).toContain('Continue with Google')
+    expect(html).toContain('Sign in with passkey')
+})
+
 test('Mail sign-in renders the locally bundled Identity controls', async ({ page }) => {
     const remoteLoginScripts: string[] = []
     page.on('request', request => {

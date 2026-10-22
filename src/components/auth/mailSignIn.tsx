@@ -1,7 +1,7 @@
 'use client'
 
-import { createElement, useEffect, useRef, type FormEvent } from 'react'
-import { registerHanasandLoginForm } from 'hanasand/auth'
+import { useEffect, useRef } from 'react'
+import { renderHanasandLoginFormMarkup, registerHanasandLoginForm } from 'hanasand/auth'
 import { removeCookies, setCookieWithExpiresAt } from '@/utils/cookies/cookies'
 import { safeMailReturnPath } from './returnPath'
 
@@ -15,8 +15,8 @@ type LoginPayload = {
 }
 
 export default function MailSignIn({ returnTo, initialError }: { returnTo: string, initialError?: string }) {
-    const formRef = useRef<HTMLFormElement>(null)
-    const sharedLoginForm = () => formRef.current?.querySelector('hanasand-login-form') as (HTMLElement & {
+    const formContainerRef = useRef<HTMLDivElement>(null)
+    const sharedLoginForm = () => formContainerRef.current?.querySelector('hanasand-login-form') as (HTMLElement & {
         setBusy(busy: boolean): void
         setError(message: string): void
     }) | null
@@ -24,6 +24,7 @@ export default function MailSignIn({ returnTo, initialError }: { returnTo: strin
     useEffect(() => {
         registerHanasandLoginForm()
         let loginForm: ReturnType<typeof sharedLoginForm> = null
+        const onSubmit = (event: Event) => void signIn(event)
         const onAuthenticated = (event: Event) => {
             const payload = (event as CustomEvent<LoginPayload>).detail
             if (!payload?.id || !payload.name || !payload.token || !payload.expires_at) return
@@ -40,14 +41,20 @@ export default function MailSignIn({ returnTo, initialError }: { returnTo: strin
         void customElements.whenDefined('hanasand-login-form').then(() => {
             loginForm = sharedLoginForm()
             loginForm?.setError(initialError || '')
-            loginForm?.addEventListener('hanasand-authenticated', onAuthenticated)
         })
-        return () => loginForm?.removeEventListener('hanasand-authenticated', onAuthenticated)
+        const container = formContainerRef.current
+        container?.addEventListener('submit', onSubmit, true)
+        container?.addEventListener('hanasand-authenticated', onAuthenticated)
+        return () => {
+            container?.removeEventListener('submit', onSubmit, true)
+            container?.removeEventListener('hanasand-authenticated', onAuthenticated)
+        }
     }, [initialError, returnTo])
 
-    async function signIn(event: FormEvent<HTMLFormElement>) {
+    async function signIn(event: Event) {
         event.preventDefault()
-        const form = event.currentTarget
+        const form = event.target instanceof HTMLFormElement ? event.target : null
+        if (!form) return
         if (form.dataset.busy === 'true') return
 
         const formData = new FormData(form)
@@ -90,16 +97,15 @@ export default function MailSignIn({ returnTo, initialError }: { returnTo: strin
 
     return <main className='grid min-h-dvh place-items-center bg-ui-canvas px-4 py-8 text-ui-text'>
         <section className='w-full max-w-md rounded-2xl border border-ui-border bg-ui-panel p-6 shadow-2xl shadow-black/20 sm:p-8'>
-            <form ref={formRef} onSubmit={signIn} className='grid gap-4'>
-                {createElement('hanasand-login-form', {
-                    'identifier-label': 'Email or username',
-                    'identifier-placeholder': 'name@hanasand.com',
-                    'sso-href': `/api/auth/sso/start?returnTo=${encodeURIComponent(returnTo)}`,
-                    'passkey-options-url': '/api/auth/passkeys/authenticate/options',
-                    'passkey-verify-url': '/api/auth/passkeys/authenticate/verify',
-                })}
-            </form>
-
+            <div ref={formContainerRef} dangerouslySetInnerHTML={{ __html: renderHanasandLoginFormMarkup({
+                loginUrl: '/api/auth/login',
+                passkeyOptionsUrl: '/api/auth/passkeys/authenticate/options',
+                passkeyVerifyUrl: '/api/auth/passkeys/authenticate/verify',
+                ssoHref: `/api/auth/sso/start?returnTo=${encodeURIComponent(returnTo)}`,
+                redirectPath: returnTo,
+                identifierLabel: 'Email or username',
+                identifierPlaceholder: 'name@hanasand.com',
+            }) }} />
         </section>
     </main>
 }
