@@ -61,7 +61,6 @@ export default function MailSignIn({ returnTo, initialError }: { returnTo: strin
                 <Image src='/hanasand-logo-transparent.png' alt='' width={42} height={42} className='h-10 w-10 object-contain' priority />
                 <div>
                     <p className='text-lg font-semibold tracking-tight'>Hanasand Mail</p>
-                    <p className='text-sm text-ui-muted'>Sign in to your mailbox</p>
                 </div>
             </div>
 
@@ -115,7 +114,6 @@ export default function MailSignIn({ returnTo, initialError }: { returnTo: strin
                 </button>
             </form>
 
-            <p className='mt-6 text-center text-xs leading-5 text-ui-muted'>Your sign-in stays within Hanasand Mail.</p>
         </section>
     </main>
 }

@@ -15,6 +15,7 @@ export async function loadMailboxOverviewData({
     health,
     accessibleAccounts,
     recentRecipients,
+    signal,
     onRepair,
     onRulesError,
 }: {
@@ -24,10 +25,11 @@ export async function loadMailboxOverviewData({
     health: Awaited<ReturnType<typeof getMailHealth>> | null
     accessibleAccounts: Awaited<ReturnType<typeof listAccessibleMailAccounts>>
     recentRecipients: Awaited<ReturnType<typeof listRecentRecipients>>
+    signal?: AbortSignal
     onRepair: (error: Error) => void
     onRulesError: (error: Error) => void
 }) {
-    const { access: repairedAccess, mailboxData } = await repairMailAccessIfNeeded(access, onRepair)
+    const { access: repairedAccess, mailboxData } = await repairMailAccessIfNeeded(access, onRepair, signal)
     const inboxMailbox = mailboxData.mailboxes.find(mailbox => mailbox.role === 'inbox') || mailboxData.mailboxes[0]
     if (!inboxMailbox) {
         return emptyMailboxOverview(actorId, access, repairedAccess, accessibleAccounts, recentRecipients, health)
@@ -46,11 +48,16 @@ export async function loadMailboxOverviewData({
         || mailboxData.mailboxes.find(mailbox => mailbox.role === (access.targetUser === 'shared:noreply' ? 'sent' : 'inbox'))?.id
         || mailboxData.mailboxes[0]?.id
         || null
-    const page = selectedMailboxId ? await listMessagePage(repairedAccess.username, repairedAccess.password, selectedMailboxId, query.after) : { messages: [], nextCursor: null }
-    const messages = page.messages
-    const selectedMessageId = query.messageId || messages[0]?.id
-    const selectedMessage = selectedMessageId ? await getMessage(repairedAccess.username, repairedAccess.password, selectedMessageId) : null
-    const filters = await listMailRules(repairedAccess.targetUser)
+    const [page, filters] = await Promise.all([
+        selectedMailboxId
+            ? listMessagePage(repairedAccess.username, repairedAccess.password, selectedMailboxId, query.after, 50, mailboxData, signal)
+            : Promise.resolve({ messages: [], nextCursor: null }),
+        listMailRules(repairedAccess.targetUser),
+    ])
+    const selectedMessageId = query.messageId || page.messages[0]?.id
+    const selectedMessage = selectedMessageId
+        ? await getMessage(repairedAccess.username, repairedAccess.password, selectedMessageId, mailboxData, signal)
+        : null
 
     return {
         actor: { id: actorId, canAccessAnyMailbox: repairedAccess.canAccessAnyMailbox, canSend: repairedAccess.canSend },
@@ -59,7 +66,7 @@ export async function loadMailboxOverviewData({
         accessibleAccounts,
         mailboxes: mailboxData.mailboxes,
         selectedMailboxId,
-        messages,
+        messages: page.messages,
         nextCursor: page.nextCursor,
         selectedMessage,
         filters,
@@ -93,9 +100,9 @@ function emptyMailboxOverview(
     }
 }
 
-async function repairMailAccessIfNeeded(access: MailAccess, onRepair: (error: Error) => void) {
+async function repairMailAccessIfNeeded(access: MailAccess, onRepair: (error: Error) => void, signal?: AbortSignal) {
     try {
-        const mailboxData = await getMailboxList(access.username, access.password)
+        const mailboxData = await getMailboxList(access.username, access.password, signal)
         return { access, mailboxData }
     } catch (error) {
         if (!isMailAuthError(error)) throw error
@@ -103,7 +110,7 @@ async function repairMailAccessIfNeeded(access: MailAccess, onRepair: (error: Er
         if (access.targetUser.startsWith('shared:')) throw error
         const repaired = await rotateMailPasswordForUser(access.targetUser, access.targetUser)
         const repairedAccess = { ...access, username: repaired.username, address: repaired.address, password: repaired.password }
-        return { access: repairedAccess, mailboxData: await getMailboxList(repairedAccess.username, repairedAccess.password) }
+        return { access: repairedAccess, mailboxData: await getMailboxList(repairedAccess.username, repairedAccess.password, signal) }
     }
 }
 

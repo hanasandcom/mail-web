@@ -5,11 +5,11 @@ const CORE = 'urn:ietf:params:jmap:core'
 const MAIL = 'urn:ietf:params:jmap:mail'
 export const JMAP_TIMEOUT_MS = Number(process.env.MAIL_JMAP_TIMEOUT_MS || 8000)
 
-export async function getMailSession(username: string, password: string) {
+export async function getMailSession(username: string, password: string, signal?: AbortSignal) {
     const response = await fetchJmap(new URL('/jmap/session', ensureTrailingSlash(mailConfig.internalUrl)), {
         headers: authHeaders(username, password),
         cache: 'no-store',
-    }, true)
+    }, true, signal)
 
     if (!response.ok) {
         throw new Error(`Unable to reach mail session endpoint: ${response.status}`)
@@ -24,7 +24,7 @@ export async function getMailSession(username: string, password: string) {
     return { session, accountId }
 }
 
-export async function jmapCall<T = unknown>(username: string, password: string, session: JmapSession, methodCalls: Array<[string, Record<string, unknown>, string]>, using: string[] = [CORE, MAIL]) {
+export async function jmapCall<T = unknown>(username: string, password: string, session: JmapSession, methodCalls: Array<[string, Record<string, unknown>, string]>, using: string[] = [CORE, MAIL], signal?: AbortSignal) {
     const retryable = methodCalls.every(([method]) => ['Mailbox/get', 'Email/query', 'Email/get'].includes(method))
     const response = await fetchJmap(toMailServiceUrl(session.apiUrl), {
         method: 'POST',
@@ -33,7 +33,7 @@ export async function jmapCall<T = unknown>(username: string, password: string, 
             'Content-Type': 'application/json',
         },
         body: JSON.stringify({ using, methodCalls }),
-    }, retryable)
+    }, retryable, signal)
 
     if (!response.ok) {
         throw new Error(`JMAP request failed (${response.status}).`)
@@ -45,12 +45,13 @@ export async function jmapCall<T = unknown>(username: string, password: string, 
     return result[1] as T
 }
 
-async function fetchJmap(input: RequestInfo | URL, init: RequestInit, retryable: boolean) {
+async function fetchJmap(input: RequestInfo | URL, init: RequestInit, retryable: boolean, signal?: AbortSignal) {
     for (let attempt = 0; ; attempt++) {
         try {
-            return await fetch(input, { ...init, signal: AbortSignal.timeout(JMAP_TIMEOUT_MS) })
+            const requestSignal = signal ? AbortSignal.any([signal, AbortSignal.timeout(JMAP_TIMEOUT_MS)]) : AbortSignal.timeout(JMAP_TIMEOUT_MS)
+            return await fetch(input, { ...init, signal: requestSignal })
         } catch (error) {
-            if (!retryable || attempt > 0 || !isTransientConnectionError(error)) throw error
+            if (signal?.aborted || !retryable || attempt > 0 || !isTransientConnectionError(error)) throw error
         }
     }
 }

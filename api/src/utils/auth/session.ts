@@ -7,6 +7,7 @@ type Session = {
 
 const MAIL_ORIGIN = 'https://mail.hanasand.com'
 const MAX_COOKIE_HEADER_LENGTH = 8192
+const SESSION_VALIDATION_BUDGET_MS = 4500
 
 function singleHeader(value: string | string[] | undefined) {
     return typeof value === 'string' ? value.trim() : ''
@@ -34,8 +35,15 @@ export async function validateMailSession(req: FastifyRequest, reply: FastifyRep
     const tokens = cookieSession
         ? [cookieSession.token, cookieSession.fallbackToken].filter((candidate): candidate is string => Boolean(candidate))
         : [token]
+    const deadline = Date.now() + SESSION_VALIDATION_BUDGET_MS
     let response: Response | undefined
     for (const [index, candidate] of tokens.entries()) {
+        const remainingMs = deadline - Date.now()
+        if (remainingMs <= 0) {
+            req.log.warn('Identity session validation exceeded its total time budget.')
+            reply.code(503).send({ error: 'Authentication service is temporarily unavailable.' })
+            return null
+        }
         try {
             response = await fetch(`${identityUrl}/api/auth/internal/sessions`, {
                 method: 'POST',
@@ -44,10 +52,10 @@ export async function validateMailSession(req: FastifyRequest, reply: FastifyRep
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({ operation: 'validate', id, token: candidate }),
-                signal: AbortSignal.timeout(5000),
+                signal: AbortSignal.timeout(remainingMs),
             })
         } catch (error) {
-            req.log.warn({ error }, 'Identity session validation failed to connect.')
+            req.log.warn({ error }, 'Identity session validation failed or timed out.')
             reply.code(503).send({ error: 'Authentication service is temporarily unavailable.' })
             return null
         }

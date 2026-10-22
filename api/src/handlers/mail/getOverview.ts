@@ -39,6 +39,7 @@ export default async function getMailOverview(req: FastifyRequest, res: FastifyR
                 req.log.warn({ error }, 'Failed to collect mail health checks')
                 return null
             })
+            const overviewController = new AbortController()
             const overviewDataPromise = withDeadline(loadMailboxOverviewData({
                 actorId: id,
                 access,
@@ -46,9 +47,10 @@ export default async function getMailOverview(req: FastifyRequest, res: FastifyR
                 health: null,
                 accessibleAccounts: [],
                 recentRecipients: [],
+                signal: overviewController.signal,
                 onRepair: error => req.log.warn({ error, userId: access.targetUser }, 'Stored mail credentials failed; rotating mailbox secret'),
                 onRulesError: error => req.log.warn({ error }, 'Failed to apply mail rules'),
-            }), MAIL_OVERVIEW_TIMEOUT_MS, null)
+            }), MAIL_OVERVIEW_TIMEOUT_MS, null, () => overviewController.abort(new Error('Mail overview deadline exceeded.')))
             const accountCountsPromise = accessibleAccountsPromise.then(accounts => withDeadline(
                 loadAccountCounts(id, accounts, access.targetUser),
                 1000,
@@ -113,9 +115,12 @@ export default async function getMailOverview(req: FastifyRequest, res: FastifyR
     }
 }
 
-export function withDeadline<T>(work: Promise<T>, timeoutMs: number, fallback: T) {
+export function withDeadline<T>(work: Promise<T>, timeoutMs: number, fallback: T, onTimeout?: () => void) {
     return new Promise<T>((resolve, reject) => {
-        const timer = setTimeout(() => resolve(fallback), timeoutMs)
+        const timer = setTimeout(() => {
+            onTimeout?.()
+            resolve(fallback)
+        }, timeoutMs)
         work.then(value => { clearTimeout(timer); resolve(value) }, error => { clearTimeout(timer); reject(error) })
     })
 }
