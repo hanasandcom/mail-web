@@ -54,7 +54,7 @@ export async function loadMailboxOverviewData({
             : Promise.resolve({ messages: [], nextCursor: null }),
         listMailRules(repairedAccess.targetUser),
     ])
-    const selectedMessageId = query.messageId || page.messages[0]?.id
+    const selectedMessageId = query.messageId
     const selectedMessage = selectedMessageId
         ? await getMessage(repairedAccess.username, repairedAccess.password, selectedMessageId, mailboxData, signal)
         : null
