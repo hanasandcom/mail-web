@@ -38,6 +38,8 @@ The staging command starts an isolated PostgreSQL-backed API with synthetic sett
 checks its health, unauthorized-request handling, and dashboard CORS, then removes the
 temporary staging services and volume. It does not use production database or mail data.
 
+To check device-bound sessions against real Identity and PostgreSQL, use a clean Git checkout on the staging Docker host and run `bash scripts/test-device-proof-staging.sh /path/to/identity-git-checkout`. The runner archives the reviewed Mail helper/test and pinned Identity revision from Git, uses the matching immutable Identity runtime dependencies, verifies an unused internal subnet, and creates a disposable database with synthetic credentials. It exercises proof binding, replay rejection, and lost-response handling without opening mailboxes or sending mail, then verifies that its containers and network are absent. Do not upload source archives manually; obtain both repositories through their configured Git remotes.
+
 The Playwright suite creates accounts and sends mail. Run it only against an isolated test API and mail server, never against production mail data.
 
 ## Production
