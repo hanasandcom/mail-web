@@ -11,6 +11,10 @@ import MailSidebarShell from './mailSidebarShell'
 
 const mainSite = 'https://hanasand.com'
 
+function navigationHref(path: string) {
+    return path === '/mail' ? '/' : `${mainSite}${path}`
+}
+
 type NavLink = [label: string, href: string]
 type SidebarSection = {
     label: string
@@ -148,11 +152,11 @@ export default async function MailAppChrome({ children }: { children: React.Reac
                             {section.groups?.map(([groupLabel, links]) => <details key={groupLabel} className='group/sub ml-2 border-l border-ui-border pl-2'>
                                 <summary className='flex min-h-10 cursor-pointer list-none items-center justify-between rounded-lg px-2 text-sm font-semibold text-ui-text hover:bg-ui-raised [&::-webkit-details-marker]:hidden'>{groupLabel}<ChevronDown className='h-4 w-4 text-ui-muted transition group-open/sub:rotate-180' /></summary>
                                 <div className='ml-2 grid border-l border-ui-border pl-2'>
-                                    {links.map(([label, href]) => <a key={href} href={`${mainSite}${href}`} aria-current={href === '/mail' ? 'page' : undefined} className={`flex min-h-10 items-center rounded-lg px-3 text-sm ${href === '/mail' ? 'bg-ui-raised font-semibold text-ui-text' : 'text-ui-muted hover:bg-ui-raised hover:text-ui-text'}`}>{label}</a>)}
+                                    {links.map(([label, href]) => <a key={href} href={navigationHref(href)} aria-current={href === '/mail' ? 'page' : undefined} className={`flex min-h-10 items-center rounded-lg px-3 text-sm ${href === '/mail' ? 'bg-ui-raised font-semibold text-ui-text' : 'text-ui-muted hover:bg-ui-raised hover:text-ui-text'}`}>{label}</a>)}
                                 </div>
                             </details>)}
                             {section.links && <div className='ml-2 grid border-l border-ui-border pl-2'>
-                                {section.links.map(([label, href]) => <a key={href} href={`${mainSite}${href}`} aria-current={href === '/mail' ? 'page' : undefined} className={`flex min-h-10 items-center rounded-lg px-3 text-sm ${href === '/mail' ? 'bg-ui-raised font-semibold text-ui-text' : 'text-ui-muted hover:bg-ui-raised hover:text-ui-text'}`}>{label}</a>)}
+                                {section.links.map(([label, href]) => <a key={href} href={navigationHref(href)} aria-current={href === '/mail' ? 'page' : undefined} className={`flex min-h-10 items-center rounded-lg px-3 text-sm ${href === '/mail' ? 'bg-ui-raised font-semibold text-ui-text' : 'text-ui-muted hover:bg-ui-raised hover:text-ui-text'}`}>{label}</a>)}
                             </div>}
                         </details>
                     })}
