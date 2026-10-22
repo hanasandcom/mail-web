@@ -30,7 +30,7 @@ export function MailboxSidebar({ overview, loading, compact, selectedMailboxId, 
                                 <button
                                     className={iconButton}
                                     title={compact ? 'Expand folders' : 'Collapse folders'}
-                                    onClick={() => onToggleCompact}
+                                    onClick={onToggleCompact}
                                 >
                                     {compact ? <PanelLeftOpen className='h-3.5 w-3.5' /> : <PanelLeftClose className='h-3.5 w-3.5' />}
                                 </button>
@@ -38,7 +38,7 @@ export function MailboxSidebar({ overview, loading, compact, selectedMailboxId, 
                                     className={iconButton}
                                     disabled={creatingMailbox}
                                     title='Create folder'
-                                    onClick={() => onCreateFolder}
+                                    onClick={onCreateFolder}
                                 >
                                     <FolderInput className='h-3.5 w-3.5' />
                                 </button>
@@ -46,7 +46,7 @@ export function MailboxSidebar({ overview, loading, compact, selectedMailboxId, 
                                     className={iconButton}
                                     title='Mailbox admin'
                                     data-mail-admin-trigger
-                                    onClick={() => onAdmin}
+                                    onClick={onAdmin}
                                 >
                                     <Settings2 className='h-3.5 w-3.5' />
                                 </button>

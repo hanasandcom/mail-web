@@ -8,23 +8,25 @@ export async function listMessages(username: string, password: string, mailboxId
     return (await listMessagePage(username, password, mailboxId, undefined, limit)).messages
 }
 
-export async function listMessagePage(username: string, password: string, mailboxId: string, after?: string, limit = 50) {
-    return queryMessagePage(username, password, mailboxId, { inMailbox: mailboxId }, after, limit)
+export async function listMessagePage(username: string, password: string, mailboxId: string, after?: string, limit = 50, context?: MailSessionContext, signal?: AbortSignal) {
+    return queryMessagePage(username, password, mailboxId, { inMailbox: mailboxId }, after, limit, context, signal)
 }
 
 export async function searchMessagePage(username: string, password: string, mailboxId: string, text: string, after?: string, limit = 50) {
     return queryMessagePage(username, password, mailboxId, { inMailbox: mailboxId, text }, after, limit)
 }
 
-async function queryMessagePage(username: string, password: string, mailboxId: string, filter: Record<string, string>, after?: string, limit = 50) {
-    const { session, accountId } = await getMailSession(username, password)
+type MailSessionContext = Awaited<ReturnType<typeof getMailSession>>
+
+async function queryMessagePage(username: string, password: string, mailboxId: string, filter: Record<string, string>, after?: string, limit = 50, context?: MailSessionContext, signal?: AbortSignal) {
+    const { session, accountId } = context || await getMailSession(username, password, signal)
     const query = await jmapCall<{ ids?: string[] }>(username, password, session, [
         ['Email/query', { accountId, filter, sort: [{ property: 'receivedAt', isAscending: false }], limit: limit + 1,
             ...(after ? { anchor: after, anchorOffset: 1 } : {}) }, 'query']
-    ])
+    ], undefined, signal)
     const ids = query.ids || []
     const pageIds = ids.slice(0, limit)
-    const messages = pageIds.length ? await getEmailsByIds(username, password, session, accountId, pageIds, false) : []
+    const messages = pageIds.length ? await getEmailsByIds(username, password, session, accountId, pageIds, false, signal) : []
     const byId = new Map(messages.map(message => [message.id, message]))
     return {
         messages: pageIds.flatMap(id => byId.has(id) ? [toSummary(byId.get(id)!)] : []),
@@ -32,9 +34,9 @@ async function queryMessagePage(username: string, password: string, mailboxId: s
     }
 }
 
-export async function getMessage(username: string, password: string, messageId: string) {
-    const { session, accountId } = await getMailSession(username, password)
-    const messages = await getEmailsByIds(username, password, session, accountId, [messageId])
+export async function getMessage(username: string, password: string, messageId: string, context?: MailSessionContext, signal?: AbortSignal) {
+    const { session, accountId } = context || await getMailSession(username, password, signal)
+    const messages = await getEmailsByIds(username, password, session, accountId, [messageId], true, signal)
     return messages[0] ? toMessage(messages[0]) : null
 }
 
@@ -56,7 +58,7 @@ export async function listInboxMessagesForFiltering(username: string, password: 
     return listMessages(username, password, mailboxId, 100)
 }
 
-async function getEmailsByIds(username: string, password: string, session: JmapSession, accountId: string, ids: string[], includeBody = true) {
+async function getEmailsByIds(username: string, password: string, session: JmapSession, accountId: string, ids: string[], includeBody = true, signal?: AbortSignal) {
     const response = await jmapCall<{ list?: EmailRecord[] }>(username, password, session, [
         ['Email/get', {
             accountId,
@@ -66,7 +68,7 @@ async function getEmailsByIds(username: string, password: string, session: JmapS
                 : ['id', 'threadId', 'mailboxIds', 'keywords', 'subject', 'preview', 'receivedAt', 'sentAt', 'from', 'to', 'cc', 'hasAttachment'],
             ...(includeBody ? { fetchAllBodyValues: true } : {}),
         }, 'emails']
-    ])
+    ], undefined, signal)
 
     const messages = response.list || []
     if (includeBody) await attributeContactSenders(messages)

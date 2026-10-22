@@ -1,11 +1,11 @@
 import type { MailboxRecord } from './jmapTypes.ts'
 import { getMailSession, jmapCall } from './jmapSession.ts'
 
-export async function getMailboxList(username: string, password: string) {
-    const { session, accountId } = await getMailSession(username, password)
+export async function getMailboxList(username: string, password: string, signal?: AbortSignal) {
+    const { session, accountId } = await getMailSession(username, password, signal)
     const result = await jmapCall<{ list?: MailboxRecord[] }>(username, password, session, [
         ['Mailbox/get', { accountId, properties: ['id', 'name', 'role', 'parentId', 'sortOrder', 'totalEmails', 'unreadEmails', 'myRights'] }, 'mailboxes']
-    ])
+    ], undefined, signal)
 
     return { accountId, session, mailboxes: (result.list || []).sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0) || a.name.localeCompare(b.name)) }
 }
