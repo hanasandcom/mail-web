@@ -251,7 +251,7 @@ if ! wait_for_mail_status 401 https://mail.hanasand.com:8443/api/mail/overview; 
     exit 1
 fi
 mail_root="$(curl_local_mail --fail --silent --show-error --max-time 5 https://mail.hanasand.com:8443/ || true)"
-if ! grep -q 'Sign in to your mailbox' <<<"$mail_root"; then
+if ! grep -q 'Hanasand Mail' <<<"$mail_root"; then
     echo 'Standalone mail root did not show its own sign-in page; rolling back.' >&2
     cp -p "$backup" "$config"
     docker exec openresty /usr/local/openresty/bin/openresty -t >/dev/null
