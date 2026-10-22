@@ -18,6 +18,10 @@ export type UrlReputation = {
 
 export type CanonicalRemoteUrl = { id: string, url: string }
 
+export function isVirusTotalClear(reputation: UrlReputation) {
+    return reputation.status === 'known' && reputation.flagged === 0
+}
+
 export async function cachedAttachmentSha256(mailboxUser: string, blobId: string) {
     const result = await run('SELECT sha256 FROM mail_attachment_hash_cache WHERE mailbox_user = $1 AND blob_id = $2', [mailboxUser, blobId])
     const sha256 = String((result.rows[0] as { sha256?: string } | undefined)?.sha256 || '').trim()
