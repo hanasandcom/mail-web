@@ -145,7 +145,7 @@ export function MailSelect({
             onBlur={event => {
                 if (!rootRef.current?.contains(event.relatedTarget as Node | null)) setOpen(false)
             }}
-            className={`group flex h-10 w-full min-w-0 cursor-pointer select-none items-center gap-2 rounded-lg border px-1 py-2 text-left text-ui-text outline-none transition-[border-color,background-color,box-shadow] duration-200 focus-visible:border-ui-primary focus-visible:ring-2 focus-visible:ring-ui-primary/20 disabled:cursor-not-allowed ${open ? 'border-ui-primary/40 bg-ui-panel ring-1 ring-ui-primary/10' : 'border-ui-border/70 bg-ui-raised/60 hover:border-ui-border hover:bg-ui-raised'} ${compact ? 'text-xs' : 'text-sm'}`}
+            className={`group flex h-10 w-full min-w-0 cursor-pointer select-none items-center gap-2 rounded-lg border px-2 py-2 text-left text-ui-text outline-none transition-[border-color,background-color,box-shadow] duration-200 focus-visible:border-ui-primary focus-visible:ring-2 focus-visible:ring-ui-primary/20 disabled:cursor-not-allowed ${open ? 'border-ui-primary/40 bg-ui-panel ring-1 ring-ui-primary/10' : 'border-ui-border/70 bg-ui-raised/60 hover:border-ui-border hover:bg-ui-raised'} ${compact ? 'text-xs' : 'text-sm'}`}
         >
             <span className='min-w-0 flex-1 truncate text-left font-medium'>{selectedOption?.label ?? ''}</span>
             <span aria-hidden='true' className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-ui-muted transition-colors duration-200 ${open ? 'text-ui-primary' : 'group-hover:text-ui-text'}`}>
