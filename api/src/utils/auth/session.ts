@@ -44,18 +44,38 @@ export async function validateMailSession(req: FastifyRequest, reply: FastifyRep
             reply.code(503).send({ error: 'Authentication service is temporarily unavailable.' })
             return null
         }
-        try {
-            response = await fetch(`${identityUrl}/api/auth/internal/sessions`, {
-                method: 'POST',
-                headers: {
-                    Authorization: `Bearer ${serviceToken}`,
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ operation: 'validate', id, token: candidate }),
-                signal: AbortSignal.timeout(remainingMs),
-            })
-        } catch (error) {
-            req.log.warn({ error }, 'Identity session validation failed or timed out.')
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+            const attemptBudgetMs = deadline - Date.now()
+            if (attemptBudgetMs <= 0) break
+            try {
+                response = await fetch(`${identityUrl}/api/auth/internal/sessions`, {
+                    method: 'POST',
+                    headers: {
+                        Authorization: `Bearer ${serviceToken}`,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ operation: 'validate', id, token: candidate }),
+                    signal: AbortSignal.timeout(attemptBudgetMs),
+                })
+            } catch (error) {
+                const remainingMs = deadline - Date.now()
+                if (attempt === 0 && remainingMs > 0 && !isAbortError(error)) {
+                    await waitForIdentityRetry(remainingMs)
+                    continue
+                }
+                req.log.warn({ error }, 'Identity session validation failed or timed out.')
+                reply.code(503).send({ error: 'Authentication service is temporarily unavailable.' })
+                return null
+            }
+            const remainingMs = deadline - Date.now()
+            if (response.status >= 500 && attempt === 0 && remainingMs > 0) {
+                await waitForIdentityRetry(remainingMs)
+                continue
+            }
+            break
+        }
+        if (!response) {
+            req.log.warn('Identity session validation exceeded its total time budget.')
             reply.code(503).send({ error: 'Authentication service is temporarily unavailable.' })
             return null
         }
@@ -82,6 +102,14 @@ export async function validateMailSession(req: FastifyRequest, reply: FastifyRep
         }
     }
     return { id: userId, session }
+}
+
+function isAbortError(error: unknown) {
+    return error instanceof Error && (error.name === 'AbortError' || error.name === 'TimeoutError')
+}
+
+function waitForIdentityRetry(remainingMs: number) {
+    return new Promise(resolve => setTimeout(resolve, Math.min(150, remainingMs)))
 }
 
 function sessionFromCookies(req: FastifyRequest) {
