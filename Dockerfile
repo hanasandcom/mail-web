@@ -1,7 +1,6 @@
 FROM oven/bun:1.3.11 AS dependencies
 WORKDIR /app
 COPY package.json bun.lock ./
-COPY packages/mail-ui ./packages/mail-ui
 RUN bun install --frozen-lockfile
 
 FROM oven/bun:1.3.11 AS builder
