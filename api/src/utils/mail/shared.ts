@@ -50,10 +50,18 @@ export async function provisionSharedMailboxes(ids = sharedMailboxes.map(mailbox
         const existing = await run('SELECT * FROM shared_mail_accounts WHERE id = $1', [mailbox.id])
         const row = existing.rows[0]
         const address = `${mailbox.localPart}@${mailConfig.domain}`
-        const password = row ? tryDecryptMailSecret(row.mail_password_encrypted) : generateMailSecret()
-        if (!password) throw new Error(`Cannot decrypt ${mailbox.name} mailbox credentials.`)
         const principal = await findPrincipalByName(mailbox.localPart, 'individual')
-        if (principal && !row) throw new Error(`Existing ${mailbox.name} mailbox must be linked before provisioning; credentials were not changed.`)
+        const existingSecret = principal?.secrets?.find(secret => !secret.startsWith('otpauth://')) || null
+        const password = row
+            ? tryDecryptMailSecret(row.mail_password_encrypted)
+            : principal
+                ? existingSecret
+                : generateMailSecret()
+        if (!password) {
+            throw new Error(row
+                ? `Cannot decrypt stored ${mailbox.name} mailbox credentials.`
+                : `Existing ${mailbox.name} mailbox has no recoverable credential to link; credentials were not changed.`)
+        }
         await run(`INSERT INTO shared_mail_accounts (id, mail_username, mail_address, mail_password_encrypted)
             VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO NOTHING`,
         [mailbox.id, mailbox.localPart, address, encryptMailSecret(password)])
