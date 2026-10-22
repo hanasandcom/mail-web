@@ -66,6 +66,44 @@ test('validates the bearer session with Identity and returns refreshed-session h
     expect(responseHeaders.get('x-access-token')).toBe('rotated-token')
 })
 
+test('retries a transient Identity connection failure within the existing validation budget', async () => {
+    let calls = 0
+    globalThis.fetch = (async () => {
+        calls += 1
+        if (calls === 1) throw new TypeError('fetch failed: connection refused')
+        return Response.json({ user: { id: 'user', active: true } })
+    }) as typeof fetch
+    const reply = { code: () => reply, send: () => reply, header: () => reply } as never
+
+    const result = await validateMailSession({
+        method: 'GET', url: '/api/mail/overview',
+        headers: { authorization: 'Bearer session-token', id: 'user' },
+        log: { error() {}, warn() {} },
+    } as never, reply)
+
+    expect(result?.id).toBe('user')
+    expect(calls).toBe(2)
+})
+
+test('retries a transient Identity server error once before returning a session', async () => {
+    let calls = 0
+    globalThis.fetch = (async () => {
+        calls += 1
+        if (calls === 1) return new Response(null, { status: 503 })
+        return Response.json({ user: { id: 'user', active: true } })
+    }) as typeof fetch
+    const reply = { code: () => reply, send: () => reply, header: () => reply } as never
+
+    const result = await validateMailSession({
+        method: 'GET', url: '/api/mail/overview',
+        headers: { authorization: 'Bearer session-token', id: 'user' },
+        log: { error() {}, warn() {} },
+    } as never, reply)
+
+    expect(result?.id).toBe('user')
+    expect(calls).toBe(2)
+})
+
 test('validates a same-origin Mail cookie without exposing a rotated token to JavaScript', async () => {
     let requestBody: Record<string, unknown> | undefined
     const responseHeaders = new Map<string, string>()
