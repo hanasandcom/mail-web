@@ -6,7 +6,7 @@
       "name": "hanasand-mail",
       "dependencies": {
         "fflate": "0.8.3",
-        "hanasand": "1.0.5",
+        "hanasand": "1.0.6",
         "lucide-react": "^1.8.0",
         "next": "16.2.4",
         "react": "19.2.5",
@@ -163,7 +163,7 @@
 
     "graceful-fs": ["graceful-fs@4.2.11", "", {}, "sha512-RbJ5/jmFcNNCcDV5o9eTnBLJ/HszWV0P73bc+Ff4nS/rJj+YaS6IGyiOL0VoBYX+l1Wrl3k63h/KrH+nhJ0XvQ=="],
 
-    "hanasand": ["hanasand@1.0.5", "", { "dependencies": { "fflate": "^0.8.3" }, "peerDependencies": { "@types/react": ">=19 <20", "@types/react-dom": ">=19 <20", "lucide-react": ">=1", "react": ">=19 <20", "react-dom": ">=19 <20" }, "optionalPeers": ["@types/react-dom", "lucide-react", "react-dom"] }, "sha512-aoXCE8AOlro+cZ4pagBwvbTUoa+vrol12NBpXP8B69jyTGspo9J0v8kTpoRJy7ZYaiGjQUt9rYViINdUJxKx/Q=="],
+    "hanasand": ["hanasand@1.0.6", "", { "dependencies": { "fflate": "^0.8.3" }, "peerDependencies": { "@types/react": ">=19 <20", "@types/react-dom": ">=19 <20", "lucide-react": ">=1", "react": ">=19 <20", "react-dom": ">=19 <20" }, "optionalPeers": ["@types/react-dom", "lucide-react", "react-dom"] }, "sha512-su5HcGG/HtDTMJPbWRWGhmLeajhW39wi4i9QxBQV8hrGZxPSZlkEKJ9Fgit5yJ5O7WifxONxWoFxcapUHUc54g=="],
 
     "jiti": ["jiti@2.7.0", "", { "bin": { "jiti": "lib/jiti-cli.mjs" } }, "sha512-AC/7JofJvZGrrneWNaEnJeOLUx+JlGt7tNa0wZiRPT4MY1wmfKjt2+6O2p2uz2+skll8OZZmJMNqeke7kKbNgQ=="],
 
