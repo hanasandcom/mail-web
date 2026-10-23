@@ -1,5 +1,6 @@
 @import 'tailwindcss';
 @import 'hanasand/styles.css';
+@import 'hanasand/chrome.css';
 
 @theme {
   --font-sans: 'Manrope', 'Aptos', sans-serif;

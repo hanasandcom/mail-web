@@ -1,6 +1,6 @@
-import Image from 'next/image'
 import { cookies } from 'next/headers'
 import type { LucideIcon } from 'lucide-react'
+import { Header } from 'hanasand'
 import {
     Activity, AlarmClockCheck, BookOpen, ChevronDown, Code2, FileJson, FolderKanban,
     Gauge, House, ListFilter, Mail, Menu, Network, Radar, Search, Server, ShieldAlert,
@@ -90,11 +90,14 @@ export default async function MailAppChrome({ children }: { children: React.Reac
     const userId = cookieStore.get('id')?.value || ''
 
     return <div className='enterprise-theme flex h-dvh min-h-0 flex-col overflow-hidden bg-ui-canvas text-ui-text'>
-        <header data-site-header className='site-chrome z-20 flex h-18 shrink-0 items-center border-b border-ui-border bg-ui-panel px-3 text-ui-text sm:px-5 md:px-10 lg:px-16'>
-            <div className='mx-auto flex w-full max-w-7xl items-center justify-between gap-2 sm:gap-5'>
-                <a href={`${mainSite}/dashboard`} className='flex min-w-0 shrink-0 items-center gap-3' aria-label='Hanasand dashboard'>
-                    <Image src='/hanasand-logo-transparent.png' alt='' width={36} height={36} className='h-9 w-9 shrink-0 object-contain' priority />
-                </a>
+        <div data-site-header className='site-chrome z-20 shrink-0 border-b border-ui-border bg-ui-panel px-3 text-ui-text sm:px-5 md:px-10 lg:px-16'>
+            <Header
+                brandHref={`${mainSite}/dashboard`}
+                brandLabel='Hanasand Mail'
+                logoSrc='/hanasand-logo-transparent.png'
+                links={[{ href: 'https://cdn.hanasand.com', label: 'CDN' }]}
+                className='mx-auto flex h-18 w-full max-w-7xl items-center justify-between gap-2 sm:gap-5'
+                actions={<div className='flex min-w-0 flex-1 items-center justify-end gap-1 sm:gap-2'>
                 <nav aria-label='Main navigation' className='mr-auto hidden items-center gap-2 xl:flex'>
                     {topNavigation.map(group => <details key={group.label} className='group relative'>
                         <summary className='flex h-10 cursor-pointer list-none items-center gap-2 rounded-lg px-3 text-sm font-semibold text-ui-muted transition hover:bg-ui-raised hover:text-ui-text [&::-webkit-details-marker]:hidden'>
@@ -138,8 +141,9 @@ export default async function MailAppChrome({ children }: { children: React.Reac
                         </div>
                     </details>
                 </div>
-            </div>
-        </header>
+                </div>}
+            />
+        </div>
         <div className='grid min-h-0 flex-1 grid-cols-1 gap-2 bg-ui-canvas p-2 lg:grid-cols-[auto_minmax(0,1fr)]'>
             <MailSidebarShell>
                     {sidebar.map(section => {
