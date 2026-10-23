@@ -60,3 +60,7 @@
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; min-height: 100%; width: 100%; }
 body { background: var(--ui-canvas); color: var(--ui-text); font-family: var(--font-sans); }
+/* Keep the Dashboard label visible when shared Header styles inherit link colors. */
+.site-chrome .mail-dashboard-link {
+  color: var(--ui-canvas);
+}

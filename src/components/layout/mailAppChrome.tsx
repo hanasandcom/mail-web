@@ -117,7 +117,7 @@ export default async function MailAppChrome({ children }: { children: React.Reac
                     </a>
                     <a href={`${mainSite}/support`} className='hidden h-10 min-w-20 items-center justify-center rounded-lg px-3 text-sm font-semibold text-ui-muted transition hover:bg-ui-raised hover:text-ui-text lg:inline-flex'>Support</a>
                     <MailThemeToggle />
-                    <a href={`${mainSite}/dashboard`} className='hidden h-11 items-center gap-2 rounded-lg bg-ui-text px-3 text-sm font-semibold text-ui-canvas shadow-sm transition hover:opacity-90 sm:inline-flex sm:px-4'>Dashboard</a>
+                    <a href={`${mainSite}/dashboard`} className='mail-dashboard-link hidden h-11 items-center gap-2 rounded-lg bg-ui-text px-3 text-sm font-semibold text-ui-canvas shadow-sm transition hover:opacity-90 sm:inline-flex sm:px-4'>Dashboard</a>
                     <details className='relative'>
                         <summary aria-label='Account options' className='grid h-10 w-10 cursor-pointer list-none place-items-center rounded-lg border border-ui-border text-ui-muted hover:bg-ui-raised hover:text-ui-text [&::-webkit-details-marker]:hidden'>
                             <UserRound className='h-5 w-5' />
