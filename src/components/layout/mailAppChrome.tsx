@@ -1,13 +1,12 @@
 import { cookies } from 'next/headers'
 import type { LucideIcon } from 'lucide-react'
-import { Header } from 'hanasand'
+import { Header, Sidebar } from 'hanasand'
 import {
     Activity, AlarmClockCheck, BookOpen, ChevronDown, Code2, FileJson, FolderKanban,
     Gauge, House, ListFilter, Mail, Menu, Network, Radar, Search, Server, ShieldAlert,
     ShieldCheck, UserRound,
 } from 'lucide-react'
 import MailThemeToggle from './mailThemeToggle'
-import MailSidebarShell from './mailSidebarShell'
 
 const mainSite = 'https://hanasand.com'
 
@@ -95,7 +94,7 @@ export default async function MailAppChrome({ children }: { children: React.Reac
                 brandHref={`${mainSite}/dashboard`}
                 brandLabel='Hanasand Mail'
                 logoSrc='/hanasand-logo-transparent.png'
-                links={[{ href: 'https://cdn.hanasand.com', label: 'CDN' }]}
+                links={[]}
                 className='mx-auto flex h-18 w-full max-w-7xl items-center justify-between gap-2 sm:gap-5'
                 actions={<div className='flex min-w-0 flex-1 items-center justify-end gap-1 sm:gap-2'>
                 <nav aria-label='Main navigation' className='mr-auto hidden items-center gap-2 xl:flex'>
@@ -117,7 +116,7 @@ export default async function MailAppChrome({ children }: { children: React.Reac
                     </a>
                     <a href={`${mainSite}/support`} className='hidden h-10 min-w-20 items-center justify-center rounded-lg px-3 text-sm font-semibold text-ui-muted transition hover:bg-ui-raised hover:text-ui-text lg:inline-flex'>Support</a>
                     <MailThemeToggle />
-                    <a href={`${mainSite}/dashboard`} className='mail-dashboard-link hidden h-11 items-center gap-2 rounded-lg bg-ui-text px-3 text-sm font-semibold text-ui-canvas shadow-sm transition hover:opacity-90 sm:inline-flex sm:px-4'>Dashboard</a>
+                    <a href={`${mainSite}/dashboard`} className='hidden h-11 items-center gap-2 rounded-lg border border-ui-border px-3 text-sm font-semibold text-ui-muted transition hover:bg-ui-raised hover:text-ui-text sm:inline-flex sm:px-4'>Dashboard</a>
                     <details className='relative'>
                         <summary aria-label='Account options' className='grid h-10 w-10 cursor-pointer list-none place-items-center rounded-lg border border-ui-border text-ui-muted hover:bg-ui-raised hover:text-ui-text [&::-webkit-details-marker]:hidden'>
                             <UserRound className='h-5 w-5' />
@@ -145,7 +144,8 @@ export default async function MailAppChrome({ children }: { children: React.Reac
             />
         </div>
         <div className='grid min-h-0 flex-1 grid-cols-1 gap-2 bg-ui-canvas p-2 lg:grid-cols-[auto_minmax(0,1fr)]'>
-            <MailSidebarShell>
+            <Sidebar aria-label='Dashboard sidebar' className='site-chrome dashboard-sidebar-sticky hidden min-h-0 overflow-y-auto rounded-lg border border-ui-border bg-ui-panel p-2 text-ui-text shadow-sm shadow-ui-canvas/10 lg:block lg:w-72'>
+                <nav aria-label='Dashboard navigation' className='grid gap-0.5'>
                     {sidebar.map(section => {
                         const Icon = section.icon
                         const active = section.label === 'Communication'
@@ -164,7 +164,8 @@ export default async function MailAppChrome({ children }: { children: React.Reac
                             </div>}
                         </details>
                     })}
-            </MailSidebarShell>
+                </nav>
+            </Sidebar>
             <main className='min-h-0 min-w-0 overflow-y-auto overscroll-contain'>{children}</main>
         </div>
     </div>
