@@ -58,7 +58,9 @@ function run(args: string[], env: Record<string, string> = {}) {
             *'run -d'*) echo synthetic-container;;
         esac`)
         shim('curl', `if [[ "$*" == *--write-out* ]]; then
-            if [[ "$*" == *'/?expired=true'* ]]; then printf '307 https://identity.hanasand.com/login?returnTo=https%%3A%%2F%%2Fmail.hanasand.com%%2F&expired=true'; else printf 401; fi
+            if [[ "$*" == *'/?expired=true'* ]]; then
+                if [[ \${MOCK_REDIRECT_DELAY:-} == 1 && ! -f "$MOCK_ROOT/redirect-ready" ]]; then touch "$MOCK_ROOT/redirect-ready"; printf 200; else printf '307 https://identity.hanasand.com/login?returnTo=https%%3A%%2F%%2Fmail.hanasand.com%%2F&expired=true'; fi
+            else printf 401; fi
         elif [[ "$*" == *'--request OPTIONS'* ]]; then
             printf 'access-control-allow-origin: https://hanasand.com\\r\\n'
         elif [[ "$*" == *'/ready'* ]]; then
@@ -83,6 +85,12 @@ test('default deploy still provisions, builds and switches UI and retires the pr
     expect(result.config).not.toContain('location ^~ /api/auth/')
     expect(result.config).not.toContain('/api/auth/sso/start')
     expect(result.config.startsWith(other)).toBe(true)
+})
+test('UI deploy retries the Identity redirect smoke check while OpenResty reload propagates', () => {
+    const result = run([], { MOCK_REDIRECT_DELAY: '1' })
+    expect(result.status).toBe(0)
+    const redirectChecks = result.commands.split('\n').filter(line => line.includes('/?expired=true'))
+    expect(redirectChecks.length).toBeGreaterThan(1)
 })
 test('API-only keeps UI and old API, changes the Mail API route, removes legacy Mail auth proxies, and preserves readiness checks', () => {
     const result = run(['--api-only'])

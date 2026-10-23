@@ -307,8 +307,17 @@ if ! wait_for_mail_status 401 https://mail.hanasand.com:8443/api/mail/overview; 
     compose_api down >/dev/null 2>&1 || true
     exit 1
 fi
-mail_root_redirect="$(curl_local_mail --silent --show-error --max-time 5 --output /dev/null --write-out '%{http_code} %{redirect_url}' \
-    'https://mail.hanasand.com:8443/?expired=true' || true)"
+mail_root_redirect=""
+for attempt in $(seq 1 20); do
+    mail_root_redirect="$(curl_local_mail --silent --show-error --max-time 5 --output /dev/null --write-out '%{http_code} %{redirect_url}' \
+        'https://mail.hanasand.com:8443/?expired=true' || true)"
+    if [[ "$mail_root_redirect" == 307\ https://identity.hanasand.com/login\?* ]] \
+        && [[ "$mail_root_redirect" == *'returnTo=https%3A%2F%2Fmail.hanasand.com%2F'* ]] \
+        && [[ "$mail_root_redirect" == *'expired=true'* ]]; then
+        break
+    fi
+    sleep 1
+done
 if [[ "$mail_root_redirect" != 307\ https://identity.hanasand.com/login\?* ]] \
     || [[ "$mail_root_redirect" != *'returnTo=https%3A%2F%2Fmail.hanasand.com%2F'* ]] \
     || [[ "$mail_root_redirect" != *'expired=true'* ]]; then
