@@ -163,13 +163,6 @@ if [[ "$identity_probe_status" != 401 ]]; then
     compose_api down >/dev/null 2>&1 || true
     exit 1
 fi
-candidate_sso_status="$(curl --silent --show-error --max-time 8 --output /dev/null --write-out '%{http_code}' \
-    "http://127.0.0.1:${api_port}/api/auth/sso/start?redirectPath=%2F" || true)"
-if [[ "$candidate_sso_status" != 303 && "$candidate_sso_status" != 503 ]]; then
-    echo "Mail API SSO proxy returned HTTP ${candidate_sso_status:-no response}; expected an Identity redirect or unconfigured-provider response." >&2
-    compose_api down >/dev/null 2>&1 || true
-    exit 1
-fi
 if ! docker exec "$api_container" bun -e '
 const base = process.env.MAIL_INTERNAL_URL || "http://127.0.0.1:8081"
 const response = await fetch(new URL("/jmap/session", base), { signal: AbortSignal.timeout(5000) })
@@ -226,29 +219,21 @@ for start in re.finditer(r'(?m)^server\s*\{', text):
 if len(matches) != 1: raise SystemExit('Expected exactly one mail.hanasand.com server block.')
 start, end, block = matches[0]
 if api_only:
-    for route in (r'/api/auth/', r'/api/mail/'):
+    for route in (r'/api/mail/',):
         pattern = rf'(?m)(^\s*location\s+\^~\s+{re.escape(route)}\s*\{{[^}}]*?proxy_pass\s+http://127\.0\.0\.1:){re.escape(sys.argv[5])}(\s*;)'
         block, count = re.subn(pattern, lambda match: match.group(1) + api_port + match.group(2), block)
-        if count != 1: raise SystemExit('Expected exactly one existing Mail API and auth upstream.')
+        if count != 1: raise SystemExit('Expected exactly one existing Mail API upstream.')
+    for route in (r'/api/auth/', r'/api/auth/sso/start'):
+        block, _ = re.subn(rf'(?ms)^[ \t]*location\s+(?:\^~\s+)?{re.escape(route)}\s*\{{.*?^[ \t]*\}}(?:\n|$)', '', block)
     path.write_text(text[:start] + block + text[end:])
     raise SystemExit(0)
 for route in (r'/api/auth/', r'/api/mail/', r'/api/backend/mail/'):
-    block, _ = re.subn(rf'(?ms)^\s*location\s+\^~\s+{re.escape(route)}\s*\{{.*?^\s*\}}\s*', '', block)
+    block, _ = re.subn(rf'(?ms)^[ \t]*location\s+\^~\s+{re.escape(route)}\s*\{{.*?^[ \t]*\}}(?:\n|$)', '', block)
 for route in (r'/api/auth/sessions', r'/api/auth/sso/start'):
-    block, _ = re.subn(rf'(?ms)^\s*location\s*=\s*{re.escape(route)}\s*\{{.*?^\s*\}}\s*', '', block)
+    block, _ = re.subn(rf'(?ms)^[ \t]*location\s*=\s*{re.escape(route)}\s*\{{.*?^[ \t]*\}}(?:\n|$)', '', block)
 root = re.compile(r'(?ms)^\s*location\s+/\s*\{.*?^\s*\}')
 replacement = f'''    location = /api/auth/sessions {{
         proxy_pass http://127.0.0.1:8183;
-        include snippets/proxy-headers.conf;
-    }}
-
-    location = /api/auth/sso/start {{
-        proxy_pass http://127.0.0.1:{port};
-        include snippets/proxy-headers.conf;
-    }}
-
-    location ^~ /api/auth/ {{
-        proxy_pass http://127.0.0.1:{api_port};
         include snippets/proxy-headers.conf;
     }}
 
@@ -322,30 +307,12 @@ if ! wait_for_mail_status 401 https://mail.hanasand.com:8443/api/mail/overview; 
     compose_api down >/dev/null 2>&1 || true
     exit 1
 fi
-mail_root="$(curl_local_mail --fail --silent --show-error --max-time 5 https://mail.hanasand.com:8443/ || true)"
-if ! grep -q 'Hanasand Mail' <<<"$mail_root" \
-    || ! grep -q 'hanasand-login-form' <<<"$mail_root" \
-    || ! grep -q 'passkey-options-url' <<<"$mail_root" \
-    || ! grep -q 'passkey-verify-url' <<<"$mail_root" \
-    || ! grep -q 'sso-href' <<<"$mail_root" \
-    || grep -q 'api.hanasand.com/api/auth/login-form.js' <<<"$mail_root"; then
-    echo 'Standalone mail root did not render the shared Identity sign-in form and its password, passkey, and SSO routes; rolling back.' >&2
-    cp -p "$backup" "$config"
-    docker exec openresty /usr/local/openresty/bin/openresty -t >/dev/null
-    docker exec openresty /usr/local/openresty/bin/openresty -s reload >/dev/null
-    if [[ "$api_only" != true ]]; then docker rm -f "${container}_next" >/dev/null 2>&1 || true; fi
-    compose_api down >/dev/null 2>&1 || true
-    exit 1
-fi
-auth_sso_status=""
-for attempt in $(seq 1 20); do
-    auth_sso_status="$(curl_local_mail --silent --show-error --max-time 8 --output /dev/null --write-out '%{http_code}' \
-        'https://mail.hanasand.com:8443/api/auth/sso/start?redirectPath=%2F' || true)"
-    if [[ "$auth_sso_status" == 303 || "$auth_sso_status" == 503 ]]; then break; fi
-    sleep 1
-done
-if [[ "$auth_sso_status" != 303 && "$auth_sso_status" != 503 ]]; then
-    echo "Mail auth route returned HTTP ${auth_sso_status:-no response} for SSO start; expected an Identity redirect or unconfigured-provider response; rolling back." >&2
+mail_root_redirect="$(curl_local_mail --silent --show-error --max-time 5 --output /dev/null --write-out '%{http_code} %{redirect_url}' \
+    'https://mail.hanasand.com:8443/?expired=true' || true)"
+if [[ "$mail_root_redirect" != 307\ https://identity.hanasand.com/login\?* ]] \
+    || [[ "$mail_root_redirect" != *'returnTo=https%3A%2F%2Fmail.hanasand.com%2F'* ]] \
+    || [[ "$mail_root_redirect" != *'expired=true'* ]]; then
+    echo "Standalone Mail did not redirect expired sessions to Identity with a Mail return URL (got ${mail_root_redirect:-no response}); rolling back." >&2
     cp -p "$backup" "$config"
     docker exec openresty /usr/local/openresty/bin/openresty -t >/dev/null
     docker exec openresty /usr/local/openresty/bin/openresty -s reload >/dev/null

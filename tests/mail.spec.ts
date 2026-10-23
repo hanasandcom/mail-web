@@ -76,8 +76,8 @@ test.describe('mail workspace', () => {
         } finally {
             await senderContext.close()
             await recipientContext.close()
-            await deleteUser(request, senderId, password)
-            await deleteUser(request, recipientId, password)
+            await deleteUser(request, senderAuth)
+            await deleteUser(request, recipientAuth)
         }
     })
 })
@@ -95,23 +95,14 @@ async function createUser(request: APIRequestContext, id: string, name: string) 
     }
 }
 
-async function deleteUser(request: APIRequestContext, id: string, secret: string) {
-    const loginResponse = await request.post(`${apiBase}/auth/login`, {
-        data: { username: id, password: secret },
-    })
-
-    if (!loginResponse.ok()) {
-        return
-    }
-
-    const token = (await loginResponse.json()).token as string
+async function deleteUser(request: APIRequestContext, auth: { id: string, token: string }) {
     await request.delete(`${apiBase}/user/self`, {
         headers: {
-            Authorization: `Bearer ${decodeURIComponent(token)}`,
-            id,
+            Authorization: `Bearer ${decodeURIComponent(auth.token)}`,
+            id: auth.id,
             'Content-Type': 'application/json',
         },
-        data: { id },
+        data: { id: auth.id },
     })
 }
 

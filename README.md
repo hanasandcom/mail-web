@@ -5,11 +5,11 @@ Standalone webmail for [mail.hanasand.com](https://mail.hanasand.com). The Hanas
 ## Architecture
 
 - `packages/mail-ui/` contains the shared React workspace, message reader, composer, mailbox controls, and API contract.
-- `src/` contains the standalone Next.js app, sign-in page, and browser Mail API client.
+- `src/` contains the standalone Next.js app and browser Mail API client. Unauthenticated users sign in at Identity and return to Mail after authentication.
 - `api/` contains the dedicated Fastify Mail API. It validates sessions with Identity, reads the existing PostgreSQL account/mail data, and talks to Stalwart over the private mail network.
 - `mail-server` runs Stalwart and the SMTP relay. It does not host the webmail interface or browser API.
 
-The standalone host serves its own UI at `/`, same-origin sign-in proxies at `/api/auth/*`, and the Mail API at `/api/mail/*`. Identity serves the shared username/password, passkey, and SSO form and owns credential verification; Mail forwards those auth requests through its dedicated API and stores the resulting session cookies. The session lookup route `/api/auth/sessions` goes directly to Identity. The dashboard calls `https://mail.hanasand.com/api` directly from the browser. Identity validates the user's session for the dedicated Mail API. Identity and the existing account database remain shared dependencies; mail requests do not depend on the main Hanasand API or frontend.
+The standalone host serves its UI at `/` and the Mail API at `/api/mail/*`. Unauthenticated requests redirect to `https://identity.hanasand.com/login`; Identity owns the login page, credentials, passkeys, SSO, and session cookies, then returns users to Mail. Mail accepts only same-site paths as return destinations. The session lookup route `/api/auth/sessions` goes directly to Identity. The dashboard calls `https://mail.hanasand.com/api` directly from the browser. Identity validates the user's session for the dedicated Mail API. Identity and the existing account database remain shared dependencies; mail requests do not depend on the main Hanasand API or frontend.
 
 `MAIL_USER_ALIASES` changes the Stalwart login name for a specific Identity user. `MAIL_USER_ADDRESSES` changes that user's primary sending address while preserving the previous address as an alias to the same mailbox. Use `user-id:address` entries separated by commas; deployment verifies each configured address before it switches traffic.
 

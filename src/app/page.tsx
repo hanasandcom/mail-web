@@ -1,13 +1,13 @@
 import { cookies } from 'next/headers'
+import { redirect } from 'next/navigation'
 import MailWorkspace from '@/components/mail/mailWorkspace'
 import MailAppChrome from '@/components/layout/mailAppChrome'
-import MailSignIn from '@/components/auth/mailSignIn'
-import { safeMailReturnPath } from '@/components/auth/returnPath'
+import { mailIdentityLoginUrl, safeMailReturnPath } from '@/utils/auth/mailReturnPath'
 
 type SearchParams = {
     mailboxUser?: string | string[]
     returnTo?: string | string[]
-    error?: string | string[]
+    expired?: string | string[]
 }
 
 export default async function Page(props: { searchParams: Promise<SearchParams> }) {
@@ -15,11 +15,12 @@ export default async function Page(props: { searchParams: Promise<SearchParams> 
     const searchParams = await props.searchParams
     const hasSession = Boolean(cookieStore.get('id')?.value
         && (cookieStore.get('mail_access_token')?.value || cookieStore.get('access_token')?.value))
-    if (!hasSession) {
+    const expired = firstValue(searchParams.expired) === 'true'
+    if (!hasSession || expired) {
         const mailboxUser = firstValue(searchParams.mailboxUser)
         const returnTo = safeMailReturnPath(firstValue(searchParams.returnTo)
             || (mailboxUser ? `/?mailboxUser=${encodeURIComponent(mailboxUser)}` : '/'))
-        return <MailSignIn returnTo={returnTo} initialError={firstValue(searchParams.error)} />
+        redirect(mailIdentityLoginUrl(returnTo, expired))
     }
     return <MailAppChrome><MailWorkspace mailboxUser={firstValue(searchParams.mailboxUser) || null} /></MailAppChrome>
 }

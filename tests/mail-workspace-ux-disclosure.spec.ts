@@ -13,8 +13,10 @@ test('standalone hostname renders shared mail UI and calls its own API', async (
         readFile(path.join(root, 'packages/mail-ui/src/components/mailWorkspaceToolbar.tsx'), 'utf8'),
     ])
 
-    expect(page).toContain('<MailSignIn')
-    expect(page).not.toContain('redirect(')
+    expect(page).toContain('mailIdentityLoginUrl(returnTo, expired)')
+    expect(page).toContain('if (!hasSession || expired)')
+    expect(page).not.toContain('MailSignIn')
+    expect(page).toContain('redirect(')
     expect(page).not.toContain('hanasand.com/dashboard/mail')
     expect(workspace).toContain("from 'hanasand/mail'")
     expect(workspace).toContain('<MailUiApiProvider api={api}>')

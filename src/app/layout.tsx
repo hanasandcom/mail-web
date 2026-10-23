@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react'
 import { cookies } from 'next/headers'
 import './globals.css'
-import 'hanasand/auth.css'
 
 export const metadata = {
     title: 'Hanasand Mail',

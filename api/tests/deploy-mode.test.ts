@@ -58,7 +58,7 @@ function run(args: string[], env: Record<string, string> = {}) {
             *'run -d'*) echo synthetic-container;;
         esac`)
         shim('curl', `if [[ "$*" == *--write-out* ]]; then
-            if [[ "$*" == *'/api/auth/sso/start'* ]]; then printf 303; else printf 401; fi
+            if [[ "$*" == *'/?expired=true'* ]]; then printf '307 https://identity.hanasand.com/login?returnTo=https%%3A%%2F%%2Fmail.hanasand.com%%2F&expired=true'; else printf 401; fi
         elif [[ "$*" == *'--request OPTIONS'* ]]; then
             printf 'access-control-allow-origin: https://hanasand.com\\r\\n'
         elif [[ "$*" == *'/ready'* ]]; then
@@ -66,7 +66,7 @@ function run(args: string[], env: Record<string, string> = {}) {
         elif [[ "$*" == *'/health'* ]]; then
             printf '{"service":"hanasand-mail"}'
         else
-            printf 'Hanasand Mail hanasand-login-form passkey-options-url passkey-verify-url sso-href'
+            printf 'Hanasand Mail'
         fi`)
         const child = Bun.spawnSync(['bash', deploy, ...args], { cwd: root, env: { ...process.env, ...env, PATH: `${join(root, 'bin')}:${process.env.PATH}`, MOCK_ROOT: root, MOCK_LOG: log, HANASAND_MAIL_NGINX_CONFIG: config, HANASAND_MAIL_API_ENV_FILE: runtime }, stdout: 'pipe', stderr: 'pipe' })
         return { status: child.exitCode, config: readFileSync(config, 'utf8'), commands: (() => { try { return readFileSync(log, 'utf8') } catch { return '' } })(), output: child.stdout.toString(), error: child.stderr.toString() }
@@ -80,12 +80,16 @@ test('default deploy still provisions, builds and switches UI and retires the pr
     expect(result.commands).toContain('docker rename hanasand_mail_ui_next hanasand_mail_ui')
     expect(result.commands).toContain('--project-name hanasand-mail-api-8085')
     expect(result.config).toContain('proxy_pass http://127.0.0.1:3011;')
+    expect(result.config).not.toContain('location ^~ /api/auth/')
+    expect(result.config).not.toContain('/api/auth/sso/start')
     expect(result.config.startsWith(other)).toBe(true)
 })
-test('API-only keeps UI and old API, changes only the two existing API upstreams and preserves all readiness checks', () => {
+test('API-only keeps UI and old API, changes the Mail API route, removes legacy Mail auth proxies, and preserves readiness checks', () => {
     const result = run(['--api-only'])
     expect(result.status).toBe(0)
-    expect(result.config).toBe(other + mail.replaceAll('http://127.0.0.1:8085;', 'http://127.0.0.1:8086;'))
+    const expectedMail = mail.replace(/    location \^~ \/api\/auth\/ \{[\s\S]*?    \}\n/, '')
+        .replaceAll('http://127.0.0.1:8085;', 'http://127.0.0.1:8086;')
+    expect(result.config).toBe(other + expectedMail)
     expect(result.commands).not.toContain('provision:shared-mailboxes')
     expect(result.commands).not.toContain('hanasand_mail_ui')
     expect(result.commands).not.toContain('docker build --pull')
@@ -102,10 +106,10 @@ test('API-only restores the previous config on nginx rejection without removing 
     expect(result.commands).toContain('openresty -s reload')
     expect(result.commands).toContain('down')
 })
-test('unknown modes and protected dirty checkouts fail before Docker operations', () => {
+test('unknown modes and protected dirty checkouts fail before Docker mutations', () => {
     for (const result of [run(['--unknown']), run(['--api-only'], { MOCK_DIRTY: '1' })]) {
         expect(result.status).not.toBe(0)
-        expect(result.commands).not.toContain('docker ')
+        expect(result.commands).not.toMatch(/docker (build|run|exec|rm|rename|compose)/)
         expect(result.config).toBe(other + mail)
     }
 })

@@ -1,67 +1,34 @@
 import { expect, test } from '@playwright/test'
 
-test('Mail login controls are present in the server-rendered page', async ({ page }) => {
-    const response = await page.goto('/?returnTo=%2Finbox')
-    const html = await response?.text() || ''
-
-    expect(html).toContain('name="username"')
-    expect(html).toContain('name="password"')
-    expect(html).toContain('Continue with Google')
-    expect(html).toContain('Sign in with passkey')
-})
-
-test('Mail sign-in renders the locally bundled Identity controls', async ({ page }) => {
-    const remoteLoginScripts: string[] = []
-    page.on('request', request => {
-        if (request.url().includes('/api/auth/login-form.js')) remoteLoginScripts.push(request.url())
+test('expired Mail sessions redirect to Identity even when stale cookies remain', async ({ request }) => {
+    const response = await request.get('/?expired=true', {
+        maxRedirects: 0,
+        headers: { cookie: 'id=expired-user; access_token=expired-session' },
     })
 
-    await page.goto('/?returnTo=%2Finbox')
-
-    await expect(page.getByRole('textbox', { name: 'Email or username' })).toBeVisible()
-    await expect(page.getByLabel('Password')).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Sign in with passkey' })).toBeVisible()
-    await expect(page.getByRole('link', { name: 'Continue with Google' }))
-        .toHaveAttribute('href', '/api/auth/sso/start?returnTo=%2Finbox')
-    expect(remoteLoginScripts).toEqual([])
+    expect(response.status()).toBe(307)
+    const destination = new URL(response.headers().location || '')
+    expect(destination.origin).toBe('https://identity.hanasand.com')
+    expect(destination.pathname).toBe('/login')
+    expect(destination.searchParams.get('returnTo')).toBe('https://mail.hanasand.com/')
+    expect(destination.searchParams.get('expired')).toBe('true')
+    expect(await response.text()).not.toContain('Email or username')
 })
 
-test('password sign-in keeps Mail’s session cookie adapter', async ({ page, context }) => {
-    await page.route('**/api/auth/login', route => route.fulfill({ json: {
-        id: 'mail-user', name: 'Mail User', avatar: '', token: 'mail-session-token',
-        expires_at: new Date(Date.now() + 60_000).toISOString(),
-    } }))
+test('unauthenticated Mail redirects reject external return URLs', async ({ request }) => {
+    const response = await request.get('/?returnTo=https%3A%2F%2Fevil.example%2F', { maxRedirects: 0 })
 
-    await page.goto('/')
-    await page.getByRole('textbox', { name: 'Email or username' }).fill('mail-user')
-    await page.getByLabel('Password').fill('correct horse battery staple')
-    const loginRequest = page.waitForRequest(request => request.url().endsWith('/api/auth/login'))
-    await page.getByRole('button', { name: 'Sign in', exact: true }).click()
-
-    expect((await loginRequest).postDataJSON()).toEqual({ username: 'mail-user', password: 'correct horse battery staple' })
-    await expect(page).toHaveURL(/\/$/)
-    const cookies = await context.cookies()
-    expect(cookies.find(cookie => cookie.name === 'access_token')?.value).toBe('mail-session-token')
-    expect(cookies.find(cookie => cookie.name === 'id')?.value).toBe('mail-user')
+    expect(response.status()).toBe(307)
+    const destination = new URL(response.headers().location || '')
+    expect(destination.origin).toBe('https://identity.hanasand.com')
+    expect(destination.searchParams.get('returnTo')).toBe('https://mail.hanasand.com/')
 })
 
-test('passkey sessions are accepted by Mail’s existing session adapter', async ({ page, context }) => {
-    await page.goto('/')
-    await page.getByRole('button', { name: 'Sign in with passkey' }).waitFor()
-    await page.locator('hanasand-login-form').evaluate(element => {
-        element.dispatchEvent(new CustomEvent('hanasand-authenticated', {
-            bubbles: true,
-            cancelable: true,
-            detail: {
-                id: 'passkey-user', name: 'Passkey User', avatar: '', token: 'passkey-session-token',
-                expires_at: new Date(Date.now() + 60_000).toISOString(),
-            },
-        }))
-    })
+test('the Identity return path preserves the requested shared mailbox', async ({ request }) => {
+    const response = await request.get('/?mailboxUser=support%40hanasand.com', { maxRedirects: 0 })
 
-    await expect(page).toHaveURL(/\/$/)
-    const cookies = await context.cookies()
-    expect(cookies.find(cookie => cookie.name === 'access_token')?.value).toBe('passkey-session-token')
-    expect(cookies.find(cookie => cookie.name === 'id')?.value).toBe('passkey-user')
+    expect(response.status()).toBe(307)
+    const destination = new URL(response.headers().location || '')
+    expect(destination.searchParams.get('returnTo'))
+        .toBe('https://mail.hanasand.com/?mailboxUser=support%40hanasand.com')
 })
