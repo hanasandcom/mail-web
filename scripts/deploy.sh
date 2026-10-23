@@ -7,7 +7,7 @@ if [[ $# != 0 ]]; then echo 'Usage: scripts/deploy.sh [--api-only]' >&2; exit 2;
 
 repo_root="$(git rev-parse --show-toplevel)"
 revision="$(git -C "$repo_root" rev-parse HEAD)"
-config="${HANASAND_MAIL_NGINX_CONFIG:-/home/hanasand/openresty/nginx/conf.d/default.conf}"
+config="${HANASAND_MAIL_NGINX_CONFIG:-/home/hanasand/openresty-release/nginx/conf.d/default.conf}"
 production_env="${HANASAND_MAIL_API_ENV_FILE:-/home/hanasand/hanasand/.env}"
 container="hanasand_mail_ui"
 candidate="hanasand_mail_ui_candidate"
@@ -21,6 +21,15 @@ config_changed=false
 finished=false
 if [[ ! -f "$config" ]]; then
     echo "OpenResty config not found: $config" >&2
+    exit 1
+fi
+if ! docker inspect openresty >/dev/null 2>&1; then
+    echo 'OpenResty container not found.' >&2
+    exit 1
+fi
+live_config_dir="$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/usr/local/openresty/nginx/conf.d"}}{{.Source}}{{end}}{{end}}' openresty)"
+if [[ -z "$live_config_dir" || "$(realpath -m "$config")" != "$(realpath -m "$live_config_dir/default.conf")" ]]; then
+    echo "Mail deployment config must be OpenResty's mounted live config ($live_config_dir/default.conf)." >&2
     exit 1
 fi
 if [[ "$(git -C "$repo_root" branch --show-current)" != main ]]; then
@@ -225,7 +234,8 @@ if api_only:
     raise SystemExit(0)
 for route in (r'/api/auth/', r'/api/mail/', r'/api/backend/mail/'):
     block, _ = re.subn(rf'(?ms)^\s*location\s+\^~\s+{re.escape(route)}\s*\{{.*?^\s*\}}\s*', '', block)
-block, _ = re.subn(r'(?ms)^\s*location\s*=\s*/api/auth/sessions\s*\{.*?^\s*\}\s*', '', block)
+for route in (r'/api/auth/sessions', r'/api/auth/sso/start'):
+    block, _ = re.subn(rf'(?ms)^\s*location\s*=\s*{re.escape(route)}\s*\{{.*?^\s*\}}\s*', '', block)
 root = re.compile(r'(?ms)^\s*location\s+/\s*\{.*?^\s*\}')
 replacement = f'''    location = /api/auth/sessions {{
         proxy_pass http://127.0.0.1:8183;
